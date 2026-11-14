@@ -1,11 +1,11 @@
 import Foundation
 
-/// The four tools the Dashboard reports. Order is the order shown in the list.
+/// The four tools the Dashboard reports. Managers come first, then the tools they install.
 enum AndroidSDKTool: String, CaseIterable, Identifiable, Sendable {
     case sdkmanager
+    case avdmanager
     case adb
     case emulator
-    case avdmanager
 
     var id: String { rawValue }
     var displayName: String { rawValue }

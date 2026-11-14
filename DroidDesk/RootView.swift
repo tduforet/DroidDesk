@@ -19,7 +19,9 @@ struct RootView: View {
             switch navigation.section {
             case .dashboard:
                 DashboardView(model: dashboard)
-            case .virtualDevices, .sdkPackages, .activity, .settings:
+            case .settings:
+                SettingsView(model: dashboard)
+            case .virtualDevices, .sdkPackages, .activity:
                 SectionPlaceholder(section: navigation.section)
             }
         }
@@ -31,7 +33,7 @@ struct RootView: View {
             }
         }
         .alert(
-            "Update failed",
+            dashboard.failureTitle,
             isPresented: updateErrorPresented
         ) {
             Button("OK", role: .cancel) {

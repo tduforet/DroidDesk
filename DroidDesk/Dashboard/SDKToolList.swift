@@ -1,34 +1,154 @@
 import SwiftUI
 
-/// The four SDK tools, in a single bordered group.
+/// Managers share one package, so they sit on one line. adb and emulator stay in their own group below.
 struct SDKToolList: View {
     var tools: [SDKToolStatus]
     var updating: AndroidSDKPackage?
+    var installing: [AndroidSDKTool]
+    var installStatus: String?
     var update: (AndroidSDKTool) -> Void
+    var install: (AndroidSDKTool) -> Void
+
+    private var isBusy: Bool { updating != nil || !installing.isEmpty }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(tools.enumerated()), id: \.element.id) { index, tool in
-                SDKToolRow(status: tool, updating: updating, update: update)
-                if index < tools.count - 1 {
-                    Divider()
+        VStack(alignment: .leading, spacing: 12) {
+            if let sdkmanager = status(for: .sdkmanager), let avdmanager = status(for: .avdmanager) {
+                toolGroup {
+                    SDKCommandLineToolsRow(
+                        sdkmanager: sdkmanager,
+                        avdmanager: avdmanager,
+                        updating: updating,
+                        installing: installing,
+                        installStatus: installStatus,
+                        isBusy: isBusy,
+                        update: update,
+                        install: install
+                    )
                 }
             }
+            let devices = tools.filter { $0.tool == .adb || $0.tool == .emulator }
+            if !devices.isEmpty {
+                toolGroup {
+                    ForEach(Array(devices.enumerated()), id: \.element.id) { index, tool in
+                        SDKToolRow(
+                            status: tool,
+                            updating: updating,
+                            installing: installing,
+                            installStatus: installStatus,
+                            isBusy: isBusy,
+                            update: update,
+                            install: install
+                        )
+                        if index < devices.count - 1 {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("SDK tools")
+    }
+
+    private func status(for tool: AndroidSDKTool) -> SDKToolStatus? {
+        tools.first { $0.tool == tool }
+    }
+
+    private func toolGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
         }
         .background(.background, in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color(nsColor: .separatorColor))
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("SDK tools")
+    }
+}
+
+/// sdkmanager and avdmanager come from the same package, so they share one version and one action.
+private struct SDKCommandLineToolsRow: View {
+    var sdkmanager: SDKToolStatus
+    var avdmanager: SDKToolStatus
+    var updating: AndroidSDKPackage?
+    var installing: [AndroidSDKTool]
+    var installStatus: String?
+    var isBusy: Bool
+    var update: (AndroidSDKTool) -> Void
+    var install: (AndroidSDKTool) -> Void
+
+    private var managers: [SDKToolStatus] { [sdkmanager, avdmanager] }
+
+    private var versionStatus: SDKToolStatus {
+        sdkmanager.installedVersion != nil ? sdkmanager : avdmanager
+    }
+
+    private var isWorking: Bool {
+        updating == .commandLineTools || installing.contains(.sdkmanager) || installing.contains(.avdmanager)
+    }
+
+    private var readinessAgrees: Bool { sdkmanager.isReady == avdmanager.isReady }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 16) {
+                    ForEach(managers) { status in
+                        HStack(spacing: 6) {
+                            Text(status.tool.displayName)
+                            if !readinessAgrees {
+                                Text(status.statusLabel)
+                                    .foregroundStyle(status.isReady ? Color.green : Color.red)
+                            }
+                        }
+                    }
+                }
+                if let installed = versionStatus.installedVersion {
+                    SDKVersionLine(installed: installed, available: versionStatus.availableVersion)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("sdkmanager and avdmanager")
+
+            Spacer(minLength: 12)
+            if let available = versionStatus.availableVersion {
+                SDKRowAction(
+                    title: "Update",
+                    workingTitle: "Updating…",
+                    accessibilityLabel: "Update sdkmanager and avdmanager to \(available)",
+                    isWorking: isWorking,
+                    isEnabled: !isBusy,
+                    action: { update(versionStatus.tool) }
+                )
+            } else if !sdkmanager.isReady {
+                SDKRowAction(
+                    title: "Install",
+                    workingTitle: installStatus ?? "Installing…",
+                    accessibilityLabel: "Install sdkmanager and avdmanager",
+                    isWorking: isWorking,
+                    isEnabled: !isBusy,
+                    action: { install(.sdkmanager) }
+                )
+            }
+            if readinessAgrees {
+                Text(sdkmanager.statusLabel)
+                    .foregroundStyle(sdkmanager.isReady ? Color.green : Color.red)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
     }
 }
 
 struct SDKToolRow: View {
     var status: SDKToolStatus
     var updating: AndroidSDKPackage?
+    var installing: [AndroidSDKTool]
+    var installStatus: String?
+    var isBusy: Bool
     var update: (AndroidSDKTool) -> Void
+    var install: (AndroidSDKTool) -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -42,12 +162,22 @@ struct SDKToolRow: View {
 
             Spacer(minLength: 12)
             if let available = status.availableVersion {
-                SDKUpdateControl(
-                    toolName: status.tool.displayName,
-                    available: available,
-                    isUpdating: updating == status.tool.package,
-                    isEnabled: updating == nil,
+                SDKRowAction(
+                    title: "Update",
+                    workingTitle: "Updating…",
+                    accessibilityLabel: "Update \(status.tool.displayName) to \(available)",
+                    isWorking: updating == status.tool.package,
+                    isEnabled: !isBusy,
                     action: { update(status.tool) }
+                )
+            } else if !status.isReady {
+                SDKRowAction(
+                    title: "Install",
+                    workingTitle: installStatus ?? "Installing…",
+                    accessibilityLabel: "Install \(status.tool.displayName)",
+                    isWorking: installing.contains(status.tool),
+                    isEnabled: !isBusy,
+                    action: { install(status.tool) }
                 )
             }
             Text(status.statusLabel)
@@ -58,30 +188,32 @@ struct SDKToolRow: View {
     }
 }
 
-private struct SDKUpdateControl: View {
-    var toolName: String
-    var available: String
-    var isUpdating: Bool
+private struct SDKRowAction: View {
+    var title: String
+    var workingTitle: String
+    var accessibilityLabel: String
+    var isWorking: Bool
     var isEnabled: Bool
     var action: () -> Void
 
     var body: some View {
-        if isUpdating {
+        if isWorking {
             HStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Updating…")
+                Text(workingTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Updating \(toolName)")
+            .accessibilityLabel(accessibilityLabel)
         } else {
-            Button("Update", action: action)
+            Button(title, action: action)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(!isEnabled)
-                .accessibilityLabel("Update \(toolName) to \(available)")
+                .accessibilityLabel(accessibilityLabel)
         }
     }
 }

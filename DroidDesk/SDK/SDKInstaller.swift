@@ -26,9 +26,10 @@ struct SDKInstaller: Sendable {
             return settled
         }
         let outcome = await run(
-            packageID: package.installIdentifier,
+            packageIDs: [package.installIdentifier],
             sdkRoot: sdkRoot,
             environment: environment,
+            launchFailure: "The update could not start.",
             onLicense: onLicense
         )
         guard case .updated = outcome else { return outcome }
@@ -39,6 +40,22 @@ struct SDKInstaller: Sendable {
             return .failed("The package could not be updated.")
         }
         return .updated
+    }
+
+    /// Installs packages that are not on disk yet. Success is a zero exit from `sdkmanager`.
+    func installPackages(
+        _ packageIDs: [String],
+        sdkRoot: URL,
+        environment: [String: String],
+        onLicense: @escaping @MainActor (SDKLicensePrompt) async -> Bool
+    ) async -> SDKInstallOutcome {
+        await run(
+            packageIDs: packageIDs,
+            sdkRoot: sdkRoot,
+            environment: environment,
+            launchFailure: "The package could not be installed.",
+            onLicense: onLicense
+        )
     }
 
     /// Moves a newer command-line tools directory into `latest` when one is already on disk.
@@ -69,15 +86,16 @@ struct SDKInstaller: Sendable {
     }
 
     private func run(
-        packageID: String,
+        packageIDs: [String],
         sdkRoot: URL,
         environment: [String: String],
+        launchFailure: String,
         onLicense: @escaping @MainActor (SDKLicensePrompt) async -> Bool
     ) async -> SDKInstallOutcome {
         let process = Process()
         let executable = sdkRoot.appending(path: AndroidSDKTool.sdkmanager.executableRelativePath)
         process.executableURL = executable
-        process.arguments = ["--sdk_root=\(sdkRoot.path)", "--install", packageID]
+        process.arguments = ["--sdk_root=\(sdkRoot.path)", "--install"] + packageIDs
         process.environment = environment
 
         let pipe = Pipe()
@@ -101,7 +119,7 @@ struct SDKInstaller: Sendable {
         } catch {
             reader.finish()
             stdin.close()
-            return .failed("The update could not start.")
+            return .failed(launchFailure)
         }
 
         let watchdog = Task {
@@ -124,7 +142,24 @@ struct SDKInstaller: Sendable {
         while let data = await reader.wait(after: seen) {
             seen = data.count
             output = String(decoding: data, as: UTF8.self)
-            while let pending = SDKLicensePromptParser.next(in: output, handledCharacters: handled) {
+            let continueMarker = "Continue installing the remaining packages? (y/N):"
+            while true {
+                let start = output.index(output.startIndex, offsetBy: min(handled, output.count))
+                let remainder = output[start...]
+                if let continuePrompt = remainder.range(of: continueMarker) {
+                    let acceptComesFirst = remainder.range(of: SDKLicensePromptParser.marker)
+                        .map { $0.lowerBound < continuePrompt.lowerBound } ?? false
+                    if !acceptComesFirst {
+                        guard stdin.write(declined ? "n\n" : "y\n") else {
+                            if process.isRunning { process.terminate() }
+                            _ = await exit.value()
+                            return .failed("The update could not answer the license prompt.")
+                        }
+                        handled = output.distance(from: output.startIndex, to: continuePrompt.upperBound)
+                        continue
+                    }
+                }
+                guard let pending = SDKLicensePromptParser.next(in: output, handledCharacters: handled) else { break }
                 let accepted = await onLicense(pending.prompt)
                 guard stdin.write(accepted ? "y\n" : "n\n") else {
                     if process.isRunning { process.terminate() }
@@ -194,7 +229,7 @@ enum SDKInstallReport {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { line in
                 !line.isEmpty
-                    && !line.hasPrefix("Warning:")
+                    && !line.lowercased().hasPrefix("warning:")
                     && !line.hasPrefix("-----")
                     && line != SDKLicensePromptParser.marker
                     && !line.hasPrefix("License ")

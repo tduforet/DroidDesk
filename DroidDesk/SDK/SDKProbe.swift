@@ -93,7 +93,7 @@ enum SDKLocator {
             .appending(path: "Library/Android/sdk", directoryHint: .isDirectory)
     }
 
-    /// App-configured path comes later. Until then: `ANDROID_SDK_ROOT`, `ANDROID_HOME`, then the usual Mac location.
+    /// The folder chosen in the app, then `ANDROID_SDK_ROOT`, `ANDROID_HOME`, then the usual Mac location.
     static func existingRoot(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
         var seen = Set<String>()
         for candidate in candidates(environment: environment) {
@@ -109,6 +109,9 @@ enum SDKLocator {
 
     static func candidates(environment: [String: String]) -> [URL] {
         var urls: [URL] = []
+        if let configured = SDKLocationStore.url {
+            urls.append(configured)
+        }
         for key in ["ANDROID_SDK_ROOT", "ANDROID_HOME"] {
             if let value = environment[key], !value.isEmpty {
                 urls.append(URL(fileURLWithPath: value, isDirectory: true))
