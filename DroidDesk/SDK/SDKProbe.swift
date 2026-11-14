@@ -22,7 +22,16 @@ struct SDKProbe: Sendable {
             }
             return AndroidSDKTool.allCases.map { found[$0] ?? SDKToolStatus(tool: $0, isReady: false) }
         }
-        return SDKInspection(root: root, tools: tools)
+        let listing = await repositoryListing(in: root, environment: environment, tools: tools)
+        let annotated = tools.map { status in
+            var status = status
+            guard status.isReady else { return status }
+            let listed = listing.availableVersion(for: status.tool, installed: status.installedVersion)
+            let sibling = commandLineToolsSibling(of: status, in: root)
+            status.availableVersion = newerVersion(listed, sibling)
+            return status
+        }
+        return SDKInspection(root: root, tools: annotated)
     }
 
     private func status(of tool: AndroidSDKTool, in root: URL, environment: [String: String]) async -> SDKToolStatus {
@@ -35,7 +44,46 @@ struct SDKProbe: Sendable {
             arguments: tool.versionArguments,
             environment: environment
         )
-        return SDKToolStatus(tool: tool, isReady: ready)
+        return SDKToolStatus(
+            tool: tool,
+            isReady: ready,
+            installedVersion: ready ? InstalledRevision.read(root: root, tool: tool) : nil
+        )
+    }
+
+    /// `sdkmanager` sometimes leaves a newer command-line tools package beside `latest` instead of replacing it.
+    private func commandLineToolsSibling(of status: SDKToolStatus, in root: URL) -> String? {
+        guard status.tool.package == .commandLineTools, let installed = status.installedVersion else { return nil }
+        return CommandLineToolsLayout.newestRevision(in: root, newerThan: installed)
+    }
+
+    private func newerVersion(_ listed: String?, _ sibling: String?) -> String? {
+        switch (listed, sibling) {
+        case let (listed?, sibling?):
+            return VersionOrdering.isOlder(listed, than: sibling) ? sibling : listed
+        case (let listed?, nil):
+            return listed
+        case (nil, let sibling?):
+            return sibling
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    private func repositoryListing(in root: URL, environment: [String: String], tools: [SDKToolStatus]) async -> SDKRepositoryListing {
+        guard tools.contains(where: { $0.tool == .sdkmanager && $0.isReady }) else {
+            return SDKRepositoryListing(updates: [:], latestCommandLineTools: nil)
+        }
+        let executable = root.appending(path: AndroidSDKTool.sdkmanager.executableRelativePath)
+        guard let result = await runner.run(
+            executable: executable,
+            arguments: ["--list", "--newer"],
+            environment: environment,
+            timeout: .seconds(30)
+        ), result.exitCode == 0 else {
+            return SDKRepositoryListing(updates: [:], latestCommandLineTools: nil)
+        }
+        return SDKRepositoryListingParser.parse(result.standardOutput)
     }
 }
 

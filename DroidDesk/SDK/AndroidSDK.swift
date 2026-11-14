@@ -32,6 +32,10 @@ enum AndroidSDKTool: String, CaseIterable, Identifiable, Sendable {
 struct SDKToolStatus: Identifiable, Equatable, Sendable {
     var tool: AndroidSDKTool
     var isReady: Bool
+    /// Package revision from the SDK, such as `37.0.1`. Absent when the tool cannot run.
+    var installedVersion: String?
+    /// Newer revision published by Google. Absent when nothing newer is listed, or the catalogue could not be read.
+    var availableVersion: String?
 
     var id: AndroidSDKTool { tool }
     var statusLabel: String { isReady ? "Ready" : "Missing" }
