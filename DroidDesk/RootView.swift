@@ -15,7 +15,12 @@ struct RootView: View {
             }
             .listStyle(.sidebar)
         } detail: {
-            SectionPlaceholder(section: navigation.section)
+            switch navigation.section {
+            case .dashboard:
+                DashboardView()
+            case .virtualDevices, .sdkPackages, .activity, .settings:
+                SectionPlaceholder(section: navigation.section)
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbarRole(.editor)
