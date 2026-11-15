@@ -72,7 +72,10 @@ final class SetupModel {
     init() {
         folder = SDKLocationStore.url ?? SDKLocator.existingRoot() ?? SDKLocator.conventionalRoot
         refreshStates()
-        isPresented = !isComplete && !UserDefaults.standard.bool(forKey: Self.dismissedKey)
+        // A skipped setup stays skipped only while an SDK is still on disk. Without one, there is nothing to use yet.
+        let sdkMissing = states[.commandLineTools] != .done
+        let dismissed = UserDefaults.standard.bool(forKey: Self.dismissedKey)
+        isPresented = !isComplete && (sdkMissing || !dismissed)
     }
 
     // MARK: Derived state
