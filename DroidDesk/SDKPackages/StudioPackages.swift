@@ -28,7 +28,6 @@ struct StudioPackageStatus: Identifiable, Equatable, Sendable {
     var isInstalled: Bool
 
     var id: String { package.id }
-    var statusLabel: String { isInstalled ? "Ready" : "Missing" }
 }
 
 enum StudioPackageCatalogue {

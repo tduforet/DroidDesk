@@ -97,15 +97,18 @@ private struct SDKCommandLineToolsRow: View {
                     ForEach(managers) { status in
                         HStack(spacing: 6) {
                             Text(status.tool.displayName)
-                            if !readinessAgrees {
-                                Text(status.statusLabel)
-                                    .foregroundStyle(status.isReady ? Color.green : Color.red)
+                            if !readinessAgrees, !status.isReady {
+                                StatusDot(color: .red, label: "Missing")
                             }
                         }
                     }
                 }
-                if let installed = versionStatus.installedVersion {
-                    SDKVersionLine(installed: installed, available: versionStatus.availableVersion)
+                if versionStatus.installedVersion != nil || (readinessAgrees && !sdkmanager.isReady) {
+                    SDKVersionLine(
+                        installed: versionStatus.installedVersion,
+                        available: versionStatus.availableVersion,
+                        isReady: versionStatus.isReady
+                    )
                 }
             }
             .accessibilityElement(children: .combine)
@@ -131,10 +134,6 @@ private struct SDKCommandLineToolsRow: View {
                     action: { install(.sdkmanager) }
                 )
             }
-            if readinessAgrees {
-                Text(sdkmanager.statusLabel)
-                    .foregroundStyle(sdkmanager.isReady ? Color.green : Color.red)
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -154,8 +153,12 @@ struct SDKToolRow: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(status.tool.displayName)
-                if let installed = status.installedVersion {
-                    SDKVersionLine(installed: installed, available: status.availableVersion)
+                if status.installedVersion != nil || !status.isReady {
+                    SDKVersionLine(
+                        installed: status.installedVersion,
+                        available: status.availableVersion,
+                        isReady: status.isReady
+                    )
                 }
             }
             .accessibilityElement(children: .combine)
@@ -180,8 +183,6 @@ struct SDKToolRow: View {
                     action: { install(status.tool) }
                 )
             }
-            Text(status.statusLabel)
-                .foregroundStyle(status.isReady ? Color.green : Color.red)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -219,23 +220,42 @@ private struct SDKRowAction: View {
 }
 
 /// Installed revision, then the newer one when Google publishes it: `19.0 → 23.0`.
+/// A missing tool has no revision, so the line is only the red dot.
 private struct SDKVersionLine: View {
-    var installed: String
+    var installed: String?
     var available: String?
+    var isReady: Bool
 
     var body: some View {
-        HStack(spacing: 0) {
-            Text(installed)
-                .foregroundStyle(.secondary)
-            if let available {
-                Text(" → ")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("to")
-                Text(available)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.orange)
+        HStack(spacing: 6) {
+            StatusDot(color: isReady ? .green : .red, label: isReady ? "Ready" : "Missing")
+            if let installed {
+                HStack(spacing: 0) {
+                    Text(installed)
+                        .foregroundStyle(.secondary)
+                    if let available {
+                        Text(" → ")
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("to")
+                        Text(available)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
         }
         .font(.caption.monospaced())
+    }
+}
+
+private struct StatusDot: View {
+    var color: Color
+    var label: String
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .accessibilityLabel(label)
     }
 }

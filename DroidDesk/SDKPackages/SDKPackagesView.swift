@@ -101,8 +101,10 @@ struct SDKPackagesView: View {
             .accessibilityElement(children: .combine)
             Spacer(minLength: 12)
             packageAction(status)
-            Text(status.statusLabel)
-                .foregroundStyle(status.isInstalled ? Color.green : Color.red)
+            if status.isInstalled {
+                Text("Ready")
+                    .foregroundStyle(.green)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)

@@ -18,18 +18,7 @@ struct RootView: View {
             }
             .listStyle(.sidebar)
         } detail: {
-            switch navigation.section {
-            case .dashboard:
-                DashboardView(model: dashboard)
-            case .settings:
-                SettingsView(model: dashboard)
-            case .sdkPackages:
-                SDKPackagesView(model: packages)
-            case .virtualDevices:
-                VirtualDevicesView(model: devices)
-            case .activity:
-                SectionPlaceholder(section: navigation.section)
-            }
+            detail
         }
         .navigationSplitViewStyle(.balanced)
         .toolbarRole(.editor)
@@ -45,6 +34,22 @@ struct RootView: View {
             Button("OK", role: .cancel, action: dismissFailure)
         } message: {
             Text(devices.installError ?? packages.installError ?? dashboard.updateError ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch navigation.section {
+        case .dashboard:
+            DashboardView(model: dashboard)
+        case .settings:
+            SettingsView(model: dashboard)
+        case .sdkPackages:
+            SDKPackagesView(model: packages)
+        case .virtualDevices:
+            VirtualDevicesView(model: devices)
+        case .activity:
+            SectionPlaceholder(section: navigation.section)
         }
     }
 
