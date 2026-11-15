@@ -102,13 +102,22 @@ enum SDKLocator {
         configured: URL? = SDKLocationStore.url,
         home: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> URL? {
+        resolved(environment: environment, configured: configured, home: home)?.url
+    }
+
+    /// The first candidate folder that exists, and which setting it came from.
+    static func resolved(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        configured: URL? = SDKLocationStore.url,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> (url: URL, source: PathSource)? {
         var seen = Set<String>()
-        for candidate in candidates(environment: environment, configured: configured, home: home) {
-            let standardized = candidate.standardizedFileURL
+        for candidate in sourcedCandidates(environment: environment, configured: configured, home: home) {
+            let standardized = candidate.url.standardizedFileURL
             guard seen.insert(standardized.path).inserted else { continue }
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: standardized.path, isDirectory: &isDirectory), isDirectory.boolValue {
-                return standardized
+                return (standardized, candidate.source)
             }
         }
         return nil
@@ -119,28 +128,41 @@ enum SDKLocator {
         configured: URL? = SDKLocationStore.url,
         home: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> [URL] {
-        var urls: [URL] = []
+        sourcedCandidates(environment: environment, configured: configured, home: home).map(\.url)
+    }
+
+    static func sourcedCandidates(
+        environment: [String: String],
+        configured: URL?,
+        home: URL
+    ) -> [(url: URL, source: PathSource)] {
+        var found: [(url: URL, source: PathSource)] = []
         if let configured {
-            urls.append(configured)
+            found.append((configured, .app))
         }
         for key in ["ANDROID_SDK_ROOT", "ANDROID_HOME"] {
             if let value = environment[key], !value.isEmpty {
-                urls.append(URL(fileURLWithPath: value, isDirectory: true))
+                found.append((URL(fileURLWithPath: value, isDirectory: true), .environment(key)))
             }
         }
-        urls.append(conventionalRoot(home: home))
-        return urls
+        found.append((conventionalRoot(home: home), .standard))
+        return found
     }
 }
 
 struct AndroidCommandEnvironment: Sendable {
     var sdkRoot: URL
+    /// The virtual device folder chosen in DroidDesk. Without one, the tools keep their own default or `ANDROID_AVD_HOME`.
+    var avdHome: URL? = AVDLocationStore.url
 
     var values: [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let root = sdkRoot.path
         environment["ANDROID_SDK_ROOT"] = root
         environment["ANDROID_HOME"] = root
+        if let avdHome {
+            environment["ANDROID_AVD_HOME"] = avdHome.path
+        }
         let prefix = "\(root)/platform-tools:\(root)/emulator:\(root)/cmdline-tools/latest/bin"
         let path = environment["PATH"] ?? "/usr/bin:/bin"
         environment["PATH"] = "\(prefix):\(path)"

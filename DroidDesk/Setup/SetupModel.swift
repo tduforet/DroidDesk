@@ -299,7 +299,7 @@ final class SetupModel {
             failure = "The hardware profiles could not be read."
             return
         }
-        let name = AVDName.suggestion(profile: profile, image: image, taken: Set(Self.deviceNames()))
+        let name = AVDName.suggestion(profile: profile, image: image, taken: Set(AVDLocation.deviceNames()))
         let arguments = ["create", "avd", "-n", name, "-k", image.installIdentifier, "-d", profile.id]
         let activityID = ActivityLog.shared.begin(
             title: "Create \(name)",
@@ -311,7 +311,7 @@ final class SetupModel {
             environment: environment,
             timeout: .seconds(120)
         )
-        let created = result?.exitCode == 0 && Self.deviceNames().contains(name)
+        let created = result?.exitCode == 0 && AVDLocation.deviceNames().contains(name)
         ActivityLog.shared.finish(
             activityID,
             exitCode: result?.exitCode,
@@ -374,7 +374,7 @@ final class SetupModel {
             mark(.systemImage, !PhoneSystemImageCatalogue.installed(in: root).isEmpty)
         }
 
-        let names = Self.deviceNames()
+        let names = AVDLocation.deviceNames()
         deviceName = deviceName.flatMap { names.contains($0) ? $0 : nil } ?? names.first
         mark(.device, deviceName != nil)
         if deviceName == nil {
@@ -382,18 +382,6 @@ final class SetupModel {
         } else if deviceStage == .none {
             deviceStage = .stopped
         }
-    }
-
-    /// Names of the AVDs on this Mac, read from the `.ini` file each one leaves in the AVD folder.
-    nonisolated private static func deviceNames() -> [String] {
-        let entries = (try? FileManager.default.contentsOfDirectory(
-            at: AVDLocation.directory,
-            includingPropertiesForKeys: nil
-        )) ?? []
-        return entries
-            .filter { $0.pathExtension == "ini" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .sorted()
     }
 
     // MARK: Licenses

@@ -328,12 +328,75 @@ enum AVDName {
     }
 }
 
+/// The virtual device folder chosen in DroidDesk. It is handed to avdmanager and the emulator as `ANDROID_AVD_HOME`.
+enum AVDLocationStore {
+    private static let key = "configuredAVDHome"
+
+    static var url: URL? {
+        guard let path = UserDefaults.standard.string(forKey: key), !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+    }
+
+    static func save(_ url: URL) {
+        UserDefaults.standard.set(url.standardizedFileURL.path, forKey: key)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
 enum AVDLocation {
     static var directory: URL {
-        if let value = ProcessInfo.processInfo.environment["ANDROID_AVD_HOME"], !value.isEmpty {
-            return URL(fileURLWithPath: value, isDirectory: true)
+        resolved().url
+    }
+
+    /// The folder chosen in DroidDesk, then `ANDROID_AVD_HOME`, then the Android default.
+    static func resolved(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        configured: URL? = AVDLocationStore.url,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> (url: URL, source: PathSource) {
+        if let configured { return (configured, .app) }
+        if let value = environment["ANDROID_AVD_HOME"], !value.isEmpty {
+            return (URL(fileURLWithPath: value, isDirectory: true), .environment("ANDROID_AVD_HOME"))
         }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: ".android/avd", directoryHint: .isDirectory)
+        return (home.appending(path: ".android/avd", directoryHint: .isDirectory), .standard)
+    }
+
+    /// Names of the devices in a folder, read from the `.ini` file each one leaves there.
+    static func deviceNames(in folder: URL? = nil) -> [String] {
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: folder ?? directory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        return entries
+            .filter { $0.pathExtension == "ini" }
+            .map { $0.deletingPathExtension().lastPathComponent }
+            .sorted()
+    }
+}
+
+/// Whether a folder can hold virtual devices. Devices already elsewhere are never moved.
+enum AVDFolderRules {
+    enum Verdict: Equatable, Sendable {
+        case accepted
+        case rejected(String)
+    }
+
+    static func verdict(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Verdict {
+        let resolved = url.standardizedFileURL.resolvingSymlinksInPath()
+        let homePath = home.standardizedFileURL.resolvingSymlinksInPath().path
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return .rejected("That is not a folder.")
+        }
+        guard resolved.path != homePath, resolved.path != "/" else {
+            return .rejected("Choose a folder just for virtual devices, not your home folder.")
+        }
+        guard FileManager.default.isWritableFile(atPath: resolved.path) else {
+            return .rejected("DroidDesk cannot write in that folder.")
+        }
+        return .accepted
     }
 }

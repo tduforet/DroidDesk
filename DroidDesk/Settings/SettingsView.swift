@@ -3,21 +3,37 @@ import SwiftUI
 struct SettingsView: View {
     var model: DashboardModel
     var setup: SetupModel
+    var paths: PathSettingsModel
     @State private var confirmingRemoval = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SDK location")
-                        .font(.title2.weight(.semibold))
-                    Text(model.path ?? SDKPathDisplay.tilde(SDKLocator.conventionalRoot))
-                        .font(.callout.monospaced())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                section("SDK location") {
+                    LocationRow(
+                        setting: paths.sdk,
+                        notice: paths.sdkNotice,
+                        footnote: model.sdkIsOutsideHome
+                            ? "This SDK is outside your home folder, so DroidDesk will not remove it."
+                            : "Changing the location does not move or delete anything.",
+                        name: "SDK",
+                        choose: paths.chooseSDK,
+                        reveal: paths.revealSDK,
+                        useDefault: paths.useDefaultSDK
+                    )
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
+
+                section("Virtual devices") {
+                    LocationRow(
+                        setting: paths.avd,
+                        notice: paths.avdNotice,
+                        footnote: "Existing devices are not moved when the folder changes.",
+                        name: "virtual devices",
+                        choose: paths.chooseAVD,
+                        reveal: paths.revealAVD,
+                        useDefault: paths.useDefaultAVD
+                    )
+                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Setup")
@@ -62,6 +78,21 @@ struct SettingsView: View {
                     model.removeSDK()
                 }
             )
+        }
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            content()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.background, in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color(nsColor: .separatorColor))
+                }
         }
     }
 
@@ -112,6 +143,62 @@ struct SettingsView: View {
                 .disabled(!model.canRemoveSDK)
                 .accessibilityLabel("Remove the Android SDK")
             }
+        }
+    }
+}
+
+/// One folder setting: where it points, where that comes from, and the buttons to change it.
+private struct LocationRow: View {
+    var setting: PathSetting
+    var notice: PathNotice?
+    var footnote: String
+    var name: String
+    var choose: () -> Void
+    var reveal: () -> Void
+    var useDefault: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(setting.display)
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                    Text(setting.exists ? setting.source.label : "\(setting.source.label) · not found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(name) folder")
+                Spacer(minLength: 12)
+                Button("Choose…", action: choose)
+                    .controlSize(.small)
+                    .accessibilityLabel("Choose the \(name) folder")
+                Button(action: reveal) {
+                    Image(systemName: "folder")
+                        .frame(width: 16, height: 14)
+                }
+                .controlSize(.small)
+                .disabled(!setting.exists)
+                .help("Show in Finder")
+                .accessibilityLabel("Show the \(name) folder in Finder")
+                if setting.isChosenInApp {
+                    Button("Use Default", action: useDefault)
+                        .controlSize(.small)
+                        .accessibilityLabel("Use the default \(name) folder")
+                }
+            }
+            if let notice {
+                Text(notice.text)
+                    .font(.callout)
+                    .foregroundStyle(notice.isError ? .red : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(footnote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

@@ -77,7 +77,13 @@ final class DashboardModel {
     }
 
     var canRemoveSDK: Bool {
-        inspection?.root != nil && !isBusy
+        inspection?.root != nil && !isBusy && !sdkIsOutsideHome
+    }
+
+    /// DroidDesk uses an SDK outside the home folder, but only removes one inside it.
+    var sdkIsOutsideHome: Bool {
+        guard let root = inspection?.root else { return false }
+        return !SDKPathRules.isUnderHome(root)
     }
 
     private var isBusy: Bool {

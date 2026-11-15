@@ -6,6 +6,7 @@ struct RootView: View {
     @State private var packages = PackagesModel()
     @State private var devices = VirtualDevicesModel()
     @State private var setup = SetupModel()
+    @State private var paths = PathSettingsModel()
 
     var body: some View {
         @Bindable var navigation = navigation
@@ -39,6 +40,15 @@ struct RootView: View {
             .toolbarRole(.editor)
             }
         }
+        .task {
+            paths.onChange = {
+                Task {
+                    await dashboard.refresh()
+                    await devices.refresh()
+                    await packages.refresh()
+                }
+            }
+        }
         .sheet(isPresented: licenseSheetPresented) {
             if let license = setup.licensePrompt ?? devices.licensePrompt ?? packages.licensePrompt ?? dashboard.licensePrompt {
                 SDKLicenseSheet(license: license, accept: acceptLicense, decline: declineLicense)
@@ -60,7 +70,7 @@ struct RootView: View {
         case .dashboard:
             DashboardView(model: dashboard)
         case .settings:
-            SettingsView(model: dashboard, setup: setup)
+            SettingsView(model: dashboard, setup: setup, paths: paths)
         case .sdkPackages:
             SDKPackagesView(model: packages)
         case .virtualDevices:
