@@ -42,6 +42,24 @@ struct VirtualDevicesView: View {
         .background(.background)
         .navigationTitle("Virtual Devices")
         .task { await model.refresh() }
+        .sheet(isPresented: deleteSheetPresented) {
+            if let device = model.deleteTarget {
+                DeleteDeviceSheet(
+                    device: device,
+                    cancel: model.cancelDelete,
+                    confirm: model.confirmDelete
+                )
+            }
+        }
+    }
+
+    private var deleteSheetPresented: Binding<Bool> {
+        Binding(
+            get: { model.deleteTarget != nil },
+            set: { isPresented in
+                if !isPresented { model.cancelDelete() }
+            }
+        )
     }
 
     private var systemImageRow: some View {
@@ -113,9 +131,28 @@ struct VirtualDevicesView: View {
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 12)
-            deviceControls(device)
-            Text(model.phase(for: device).label)
-                .foregroundStyle(model.phase(for: device).color)
+            if model.deletingName == device.name {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Deleting \(device.title)")
+                Text("Deleting…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                deviceControls(device)
+                Button {
+                    model.requestDelete(device)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.red)
+                .disabled(model.isDeletingDevice || model.isInstallingImage)
+                .accessibilityLabel("Delete \(device.title)")
+                Text(model.phase(for: device).label)
+                    .foregroundStyle(model.phase(for: device).color)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -161,6 +198,40 @@ struct VirtualDevicesView: View {
     }
 }
 
+/// Confirms before one virtual device is deleted. Cancel is the escape action.
+private struct DeleteDeviceSheet: View {
+    var device: VirtualDevice
+    var cancel: () -> Void
+    var confirm: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Delete \(device.title)?")
+                .font(.title2.weight(.semibold))
+            Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel, action: cancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Delete", role: .destructive, action: confirm)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private var message: String {
+        if device.title == device.name {
+            "This permanently deletes this virtual device. The system image stays installed."
+        } else {
+            "This permanently deletes \(device.name). The system image stays installed."
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class VirtualDevicesModel {
@@ -171,6 +242,8 @@ final class VirtualDevicesModel {
     private(set) var isInstallingImage = false
     private(set) var listFailed = false
     private(set) var imageListFailed = false
+    private(set) var deleteTarget: VirtualDevice?
+    private(set) var deletingName: String?
     private(set) var phases: [String: DevicePhase] = [:]
     private var launchTasks: [String: Task<Void, Never>] = [:]
     private(set) var licensePrompt: SDKLicensePrompt?
@@ -181,6 +254,7 @@ final class VirtualDevicesModel {
 
     var showsSystemImage: Bool { systemImage != nil || isInstallingImage }
     var isStartingDevice: Bool { phases.values.contains(.starting) }
+    var isDeletingDevice: Bool { deletingName != nil }
 
     func phase(for device: VirtualDevice) -> DevicePhase {
         if device.readiness == .missingImage { return .missingImage }
@@ -200,7 +274,7 @@ final class VirtualDevicesModel {
     }
 
     func refresh() async {
-        guard !isInstallingImage else { return }
+        guard !isInstallingImage, deletingName == nil else { return }
         await load()
     }
 
@@ -297,6 +371,45 @@ final class VirtualDevicesModel {
         }
     }
 
+    func requestDelete(_ device: VirtualDevice) {
+        guard deletingName == nil, !isInstallingImage else { return }
+        deleteTarget = device
+    }
+
+    func cancelDelete() {
+        deleteTarget = nil
+    }
+
+    func confirmDelete() {
+        guard deletingName == nil, let device = deleteTarget, let root = SDKLocator.existingRoot() else { return }
+        let name = device.name
+        guard devices.contains(where: { $0.name == name }) else {
+            deleteTarget = nil
+            return
+        }
+        deleteTarget = nil
+        deletingName = name
+        failureTitle = "Delete failed"
+        installError = nil
+        Task {
+            await self.stopForDeletion(name, sdkRoot: root)
+            let executable = root.appending(path: AndroidSDKTool.avdmanager.executableRelativePath)
+            let result = await self.runner.run(
+                executable: executable,
+                arguments: ["delete", "avd", "-n", name],
+                environment: AndroidCommandEnvironment(sdkRoot: root).values,
+                timeout: .seconds(120)
+            )
+            self.phases[name] = nil
+            await self.load()
+            if result?.exitCode != 0 || self.devices.contains(where: { $0.name == name }) {
+                self.failureTitle = "Delete failed"
+                self.installError = "The device could not be deleted."
+            }
+            self.deletingName = nil
+        }
+    }
+
     func stop(_ device: VirtualDevice) {
         if let task = launchTasks[device.name] {
             task.cancel()
@@ -308,6 +421,15 @@ final class VirtualDevicesModel {
         Task {
             await EmulatorSession().stop(avdName: name, sdkRoot: root)
         }
+    }
+
+    private func stopForDeletion(_ name: String, sdkRoot: URL) async {
+        if let task = launchTasks[name] {
+            task.cancel()
+            await task.value
+        }
+        await EmulatorSession().stop(avdName: name, sdkRoot: sdkRoot)
+        phases[name] = nil
     }
 
     private func adoptRunningEmulators(in root: URL?) async {
