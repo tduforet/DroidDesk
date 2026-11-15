@@ -83,9 +83,9 @@ enum SDKRepositoryListingParser {
                 continue
             }
 
-            let columns = line.contains("|") ? pipeColumns(line) : wideColumns(line)
-            guard let identifier = columns.first.map(normalize), !identifier.isEmpty,
-                  identifier != "Path", identifier != "ID", !identifier.hasPrefix("-") else { continue }
+            let columns = columns(in: line)
+            guard let identifier = columns.first, identifier != "Path", identifier != "ID",
+                  !identifier.hasPrefix("-") else { continue }
 
             switch section {
             case .updates:
@@ -111,6 +111,16 @@ enum SDKRepositoryListingParser {
         }
 
         return SDKRepositoryListing(updates: updates, latestCommandLineTools: latestCommandLineTools)
+    }
+
+    /// Package columns from one `sdkmanager --list` line. A `|` table is sdkmanager 22.
+    /// Two or more spaces are Android CLI 23. The first column is the package id, with `/` written as `;`.
+    static func columns(in line: String) -> [String] {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return [] }
+        let columns = trimmed.contains("|") ? pipeColumns(trimmed) : wideColumns(trimmed)
+        guard let identifier = columns.first.map(normalize), !identifier.isEmpty else { return [] }
+        return [identifier] + columns.dropFirst()
     }
 
     /// Older sdkmanager prints `cmdline-tools;latest`. Version 23 prints `cmdline-tools/latest`.

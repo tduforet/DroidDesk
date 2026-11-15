@@ -208,12 +208,8 @@ enum PhoneSystemImageCatalogue {
     static func offered(in listOutput: String) -> [PhoneSystemImage] {
         var byIdentifier: [String: PhoneSystemImage] = [:]
         for rawLine in listOutput.split(whereSeparator: \.isNewline) {
-            let column = rawLine.trimmingCharacters(in: .whitespaces)
-                .split(separator: "|", maxSplits: 1)
-                .first
-                .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-            let identifier = column.replacingOccurrences(of: "/", with: ";")
-            guard let image = image(identifier: identifier) else { continue }
+            guard let identifier = SDKRepositoryListingParser.columns(in: String(rawLine)).first,
+                  let image = image(identifier: identifier) else { continue }
             byIdentifier[image.id] = image
         }
         return sorted(Array(byIdentifier.values))

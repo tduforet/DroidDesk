@@ -48,8 +48,7 @@ enum StudioPackageCatalogue {
     static func candidates(in listOutput: String) -> [StudioPackage] {
         var byIdentifier: [String: StudioPackage] = [:]
         for rawLine in listOutput.split(whereSeparator: \.isNewline) {
-            guard let identifier = rawLine.trimmingCharacters(in: .whitespaces).split(separator: "|").first
-                .map({ $0.trimmingCharacters(in: .whitespaces) }),
+            guard let identifier = SDKRepositoryListingParser.columns(in: String(rawLine)).first,
                   let package = package(identifier: identifier) else { continue }
             byIdentifier[package.installIdentifier] = package
         }
