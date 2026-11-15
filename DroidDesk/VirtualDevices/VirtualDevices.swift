@@ -262,6 +262,72 @@ enum PhoneSystemImageCatalogue {
     }
 }
 
+/// A phone hardware profile from `avdmanager list device`, such as `pixel_8a` / "Pixel 8a".
+struct HardwareProfile: Identifiable, Equatable, Sendable {
+    var id: String
+    var name: String
+}
+
+enum HardwareProfileCatalogue {
+    /// Pixel phones only, newest first. Folds, tablets, and the Pixel C are left out.
+    static func phones(in listOutput: String) -> [HardwareProfile] {
+        var profiles: [HardwareProfile] = []
+        var id: String?
+        var name: String?
+
+        func finish() {
+            defer {
+                id = nil
+                name = nil
+            }
+            guard let id, let name, isPhone(id) else { return }
+            profiles.append(HardwareProfile(id: id, name: name))
+        }
+
+        for rawLine in listOutput.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line == "---------" {
+                finish()
+            } else if let match = line.firstMatch(of: /^id: \d+ or "([^"]+)"/) {
+                id = String(match.1)
+            } else if line.hasPrefix("Name:") {
+                name = line.dropFirst("Name:".count).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        finish()
+        return profiles.sorted { generation($0) != generation($1) ? generation($0) > generation($1) : $0.name < $1.name }
+    }
+
+    private static func isPhone(_ id: String) -> Bool {
+        guard id == "pixel" || id.hasPrefix("pixel_") else { return false }
+        return !id.contains("fold") && !id.contains("tablet") && id != "pixel_c"
+    }
+
+    private static func generation(_ profile: HardwareProfile) -> Int {
+        profile.id.firstMatch(of: /pixel_(\d+)/).flatMap { Int($0.1) } ?? 1
+    }
+}
+
+enum AVDName {
+    /// Spaces become underscores; avdmanager allows only `a-z A-Z 0-9 . _ -`.
+    static func normalized(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " ", with: "_")
+    }
+
+    static func isValid(_ name: String) -> Bool {
+        !name.isEmpty && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) }
+    }
+
+    /// `Pixel_8a_API_37`, with a numeric suffix when that name is already taken.
+    static func suggestion(profile: HardwareProfile, image: PhoneSystemImage, taken: Set<String>) -> String {
+        let base = "\(normalized(profile.name))_API_\(image.api.replacingOccurrences(of: ".0", with: ""))"
+        guard taken.contains(base) else { return base }
+        var number = 2
+        while taken.contains("\(base)_\(number)") { number += 1 }
+        return "\(base)_\(number)"
+    }
+}
+
 enum AVDLocation {
     static var directory: URL {
         if let value = ProcessInfo.processInfo.environment["ANDROID_AVD_HOME"], !value.isEmpty {

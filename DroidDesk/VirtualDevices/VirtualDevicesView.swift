@@ -6,19 +6,22 @@ struct VirtualDevicesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.isChecking && model.devices.isEmpty ? "Checking devices…" : "Virtual devices")
-                        .font(.title2.weight(.semibold))
-                    Text(model.path)
-                        .font(.callout.monospaced())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    Text("Devices already on this Mac.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.isChecking && model.devices.isEmpty ? "Checking devices…" : "Virtual devices")
+                            .font(.title2.weight(.semibold))
+                        Text(model.path)
+                            .font(.callout.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Text("Devices already on this Mac.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                    createControl
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
 
                 if model.showsSystemImages {
                     VStack(alignment: .leading, spacing: 8) {
@@ -46,6 +49,15 @@ struct VirtualDevicesView: View {
         .background(.background)
         .navigationTitle("Virtual Devices")
         .task { await model.refresh() }
+        .sheet(isPresented: Binding(get: { model.showsCreateSheet }, set: { model.showsCreateSheet = $0 })) {
+            CreateDeviceSheet(
+                profiles: model.creationProfiles,
+                images: model.installedImages,
+                takenNames: model.takenNames,
+                cancel: { model.showsCreateSheet = false },
+                create: model.create
+            )
+        }
         .sheet(isPresented: deleteSheetPresented) {
             if let device = model.deleteTarget {
                 DeleteDeviceSheet(
@@ -54,6 +66,29 @@ struct VirtualDevicesView: View {
                     confirm: model.confirmDelete
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private var createControl: some View {
+        if model.isCreatingDevice || model.isPreparingCreation {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(model.isCreatingDevice ? "Creating…" : "Loading…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        } else {
+            Button {
+                model.beginCreate()
+            } label: {
+                Label("New Device", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!model.canCreateDevice)
+            .help(model.installedImages.isEmpty ? "Install a system image first." : "Create a virtual device")
         }
     }
 
@@ -113,7 +148,7 @@ struct VirtualDevicesView: View {
                 Button("Install") { model.install(status.image) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(model.isInstallingImage)
+                    .disabled(model.isInstallingImage || model.isCreatingDevice)
                     .accessibilityLabel("Install API \(status.image.api) system image")
             }
         }
@@ -172,7 +207,7 @@ struct VirtualDevicesView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(.red)
-                .disabled(model.isDeletingDevice || model.isInstallingImage)
+                .disabled(model.isDeletingDevice || model.isInstallingImage || model.isCreatingDevice)
                 .accessibilityLabel("Delete \(device.title)")
                 if model.phase(for: device) == .missingImage {
                     Text(model.phase(for: device).label)
@@ -239,6 +274,107 @@ struct VirtualDevicesView: View {
     }
 }
 
+/// Collects a name, a Pixel profile, and an installed system image for a new virtual device.
+private struct CreateDeviceSheet: View {
+    var profiles: [HardwareProfile]
+    var images: [PhoneSystemImage]
+    var takenNames: Set<String>
+    var cancel: () -> Void
+    var create: (String, HardwareProfile, PhoneSystemImage) -> Void
+
+    @State private var profileID: String
+    @State private var imageID: String
+    @State private var name: String
+    @State private var nameEdited = false
+
+    init(
+        profiles: [HardwareProfile],
+        images: [PhoneSystemImage],
+        takenNames: Set<String>,
+        cancel: @escaping () -> Void,
+        create: @escaping (String, HardwareProfile, PhoneSystemImage) -> Void
+    ) {
+        self.profiles = profiles
+        self.images = images
+        self.takenNames = takenNames
+        self.cancel = cancel
+        self.create = create
+        let profile = profiles.first(where: { $0.id == "pixel_8a" }) ?? profiles.first
+        let image = images.first
+        _profileID = State(initialValue: profile?.id ?? "")
+        _imageID = State(initialValue: image?.id ?? "")
+        _name = State(initialValue: Self.suggestion(profile: profile, image: image, taken: takenNames))
+    }
+
+    private var profile: HardwareProfile? { profiles.first { $0.id == profileID } }
+    private var image: PhoneSystemImage? { images.first { $0.id == imageID } }
+    private var normalizedName: String { AVDName.normalized(name) }
+
+    private var problem: String? {
+        if normalizedName.isEmpty { return nil }
+        if !AVDName.isValid(normalizedName) { return "Use letters, digits, dots, dashes, and underscores." }
+        if takenNames.contains(normalizedName) { return "A device with this name already exists." }
+        return nil
+    }
+
+    private var canCreate: Bool {
+        profile != nil && image != nil && !normalizedName.isEmpty && problem == nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("New virtual device")
+                .font(.title2.weight(.semibold))
+            Form {
+                TextField("Name", text: $name)
+                    .onChange(of: name) { _, _ in
+                        if name != Self.suggestion(profile: profile, image: image, taken: takenNames) {
+                            nameEdited = true
+                        }
+                    }
+                Picker("Hardware", selection: $profileID) {
+                    ForEach(profiles) { Text($0.name).tag($0.id) }
+                }
+                Picker("System image", selection: $imageID) {
+                    ForEach(images) { Text("API \($0.api) · Google Play").tag($0.id) }
+                }
+            }
+            .onChange(of: profileID) { _, _ in suggestIfUntouched() }
+            .onChange(of: imageID) { _, _ in suggestIfUntouched() }
+            if let problem {
+                Text(problem)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel, action: cancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Create") {
+                    guard let profile, let image else { return }
+                    create(normalizedName, profile, image)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canCreate)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+    }
+
+    private func suggestIfUntouched() {
+        guard !nameEdited else { return }
+        name = Self.suggestion(profile: profile, image: image, taken: takenNames)
+        nameEdited = false
+    }
+
+    private static func suggestion(profile: HardwareProfile?, image: PhoneSystemImage?, taken: Set<String>) -> String {
+        guard let profile, let image else { return "" }
+        return AVDName.suggestion(profile: profile, image: image, taken: taken)
+    }
+}
+
 /// Confirms before one virtual device is deleted. Cancel is the escape action.
 private struct DeleteDeviceSheet: View {
     var device: VirtualDevice
@@ -285,6 +421,12 @@ final class VirtualDevicesModel {
     private(set) var imageListFailed = false
     private(set) var deleteTarget: VirtualDevice?
     private(set) var deletingName: String?
+    private(set) var creatingName: String?
+    private(set) var creationProfiles: [HardwareProfile] = []
+    private(set) var isPreparingCreation = false
+    private var profileCache: (root: String, profiles: [HardwareProfile])?
+    private var profileTask: (root: String, task: Task<[HardwareProfile]?, Never>)?
+    var showsCreateSheet = false
     private(set) var phases: [String: DevicePhase] = [:]
     private var launchTasks: [String: Task<Void, Never>] = [:]
     private(set) var licensePrompt: SDKLicensePrompt?
@@ -297,6 +439,13 @@ final class VirtualDevicesModel {
     var isInstallingImage: Bool { installingImageID != nil }
     var isStartingDevice: Bool { phases.values.contains(.starting) }
     var isDeletingDevice: Bool { deletingName != nil }
+    var isCreatingDevice: Bool { creatingName != nil }
+    var installedImages: [PhoneSystemImage] { systemImages.filter(\.isInstalled).map(\.image) }
+    var canCreateDevice: Bool {
+        avdmanagerReady && !installedImages.isEmpty && !isInstallingImage && !isDeletingDevice
+            && !isCreatingDevice && !isPreparingCreation
+    }
+    var takenNames: Set<String> { Set(devices.map(\.name)) }
 
     func phase(for device: VirtualDevice) -> DevicePhase {
         if device.readiness == .missingImage { return .missingImage }
@@ -316,12 +465,111 @@ final class VirtualDevicesModel {
     }
 
     func refresh() async {
-        guard !isInstallingImage, deletingName == nil else { return }
+        guard !isInstallingImage, deletingName == nil, creatingName == nil else { return }
         await load()
+        prefetchProfiles()
+    }
+
+    /// Opens the create sheet at once when the profiles are cached, otherwise reads them first.
+    func beginCreate() {
+        guard canCreateDevice, let root = SDKLocator.existingRoot() else { return }
+        failureTitle = "Create failed"
+        installError = nil
+        if let cached = cachedProfiles(for: root) {
+            creationProfiles = cached
+            showsCreateSheet = true
+            return
+        }
+        isPreparingCreation = true
+        Task {
+            let profiles = await self.hardwareProfiles(root: root)
+            self.isPreparingCreation = false
+            guard let profiles else {
+                self.installError = "The hardware profiles could not be read."
+                return
+            }
+            self.creationProfiles = profiles
+            self.showsCreateSheet = true
+        }
+    }
+
+    private func prefetchProfiles() {
+        guard avdmanagerReady, let root = SDKLocator.existingRoot(), cachedProfiles(for: root) == nil else { return }
+        Task { _ = await self.hardwareProfiles(root: root) }
+    }
+
+    private func cachedProfiles(for root: URL) -> [HardwareProfile]? {
+        guard let cache = profileCache, cache.root == root.path else { return nil }
+        return cache.profiles
+    }
+
+    /// `avdmanager list device` starts a JVM, so the result is kept until the SDK location changes.
+    private func hardwareProfiles(root: URL) async -> [HardwareProfile]? {
+        if let cached = cachedProfiles(for: root) { return cached }
+        if let pending = profileTask, pending.root == root.path { return await pending.task.value }
+        let runner = runner
+        let environment = AndroidCommandEnvironment(sdkRoot: root).values
+        let executable = root.appending(path: AndroidSDKTool.avdmanager.executableRelativePath)
+        let task = Task<[HardwareProfile]?, Never> {
+            guard let result = await runner.run(
+                executable: executable,
+                arguments: ["list", "device"],
+                environment: environment,
+                timeout: .seconds(30)
+            ), result.exitCode == 0 else { return nil }
+            let profiles = HardwareProfileCatalogue.phones(in: result.standardOutput)
+            return profiles.isEmpty ? nil : profiles
+        }
+        profileTask = (root.path, task)
+        let profiles = await task.value
+        if profileTask?.root == root.path { profileTask = nil }
+        if let profiles { profileCache = (root.path, profiles) }
+        return profiles
+    }
+
+    func create(name: String, profile: HardwareProfile, image: PhoneSystemImage) {
+        guard creatingName == nil, let root = SDKLocator.existingRoot() else { return }
+        guard AVDName.isValid(name), !takenNames.contains(name),
+              PhoneSystemImageCatalogue.isInstalled(image, in: root) else { return }
+        showsCreateSheet = false
+        creatingName = name
+        failureTitle = "Create failed"
+        installError = nil
+        Task {
+            let executable = root.appending(path: AndroidSDKTool.avdmanager.executableRelativePath)
+            let arguments = ["create", "avd", "-n", name, "-k", image.installIdentifier, "-d", profile.id]
+            let activityID = ActivityLog.shared.begin(
+                title: "Create \(name)",
+                command: ActivityCommand.line(executable: executable, arguments: arguments)
+            )
+            let result = await self.runner.run(
+                executable: executable,
+                arguments: arguments,
+                environment: AndroidCommandEnvironment(sdkRoot: root).values,
+                timeout: .seconds(120)
+            )
+            await self.load()
+            let created = result?.exitCode == 0 && self.devices.contains(where: { $0.name == name })
+            var error = result?.standardError ?? "The command could not start."
+            if !created, error.isEmpty {
+                error = "The device could not be created."
+            }
+            ActivityLog.shared.finish(
+                activityID,
+                exitCode: result?.exitCode,
+                standardOutput: result?.standardOutput ?? "",
+                standardError: created ? "" : error,
+                outcome: created ? .succeeded : .failed
+            )
+            if !created {
+                self.installError = "The device could not be created."
+            }
+            self.creatingName = nil
+        }
     }
 
     func install(_ image: PhoneSystemImage) {
-        guard installingImageID == nil, let root = SDKLocator.existingRoot() else { return }
+        guard installingImageID == nil, creatingName == nil, let root = SDKLocator.existingRoot() else { return }
         guard systemImages.contains(where: { $0.id == image.id && !$0.isInstalled }) else { return }
         installingImageID = image.id
         failureTitle = "Install failed"
@@ -415,7 +663,7 @@ final class VirtualDevicesModel {
     }
 
     func requestDelete(_ device: VirtualDevice) {
-        guard deletingName == nil, !isInstallingImage else { return }
+        guard deletingName == nil, creatingName == nil, !isInstallingImage else { return }
         deleteTarget = device
     }
 
