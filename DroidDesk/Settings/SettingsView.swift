@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     var model: DashboardModel
+    var setup: SetupModel
     @State private var confirmingRemoval = false
 
     var body: some View {
@@ -17,6 +18,19 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Setup")
+                        .font(.headline)
+                    setupRow
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(.background, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Color(nsColor: .separatorColor))
+                        }
+                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Advanced")
@@ -48,6 +62,21 @@ struct SettingsView: View {
                     model.removeSDK()
                 }
             )
+        }
+    }
+
+    private var setupRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Guided setup")
+                Text("Install the SDK and create a virtual device step by step.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Button("Run Setup", action: setup.restart)
+                .controlSize(.small)
         }
     }
 

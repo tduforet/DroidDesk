@@ -5,25 +5,42 @@ struct RootView: View {
     @State private var dashboard = DashboardModel()
     @State private var packages = PackagesModel()
     @State private var devices = VirtualDevicesModel()
+    @State private var setup = SetupModel()
 
     var body: some View {
         @Bindable var navigation = navigation
 
-        NavigationSplitView {
-            List(selection: $navigation.section) {
-                ForEach(AppSection.allCases) { section in
-                    Label(section.title, systemImage: section.symbol)
-                        .tag(section)
+        Group {
+            if setup.isPresented {
+                SetupView(
+                    model: setup,
+                    openVirtualDevices: {
+                        setup.finish()
+                        navigation.show(.virtualDevices)
+                    },
+                    openActivity: {
+                        setup.skip()
+                        navigation.show(.activity)
+                    }
+                )
+            } else {
+            NavigationSplitView {
+                List(selection: $navigation.section) {
+                    ForEach(AppSection.allCases) { section in
+                        Label(section.title, systemImage: section.symbol)
+                            .tag(section)
+                    }
                 }
+                .listStyle(.sidebar)
+            } detail: {
+                detail
             }
-            .listStyle(.sidebar)
-        } detail: {
-            detail
+            .navigationSplitViewStyle(.balanced)
+            .toolbarRole(.editor)
+            }
         }
-        .navigationSplitViewStyle(.balanced)
-        .toolbarRole(.editor)
         .sheet(isPresented: licenseSheetPresented) {
-            if let license = devices.licensePrompt ?? packages.licensePrompt ?? dashboard.licensePrompt {
+            if let license = setup.licensePrompt ?? devices.licensePrompt ?? packages.licensePrompt ?? dashboard.licensePrompt {
                 SDKLicenseSheet(license: license, accept: acceptLicense, decline: declineLicense)
             }
         }
@@ -43,7 +60,7 @@ struct RootView: View {
         case .dashboard:
             DashboardView(model: dashboard)
         case .settings:
-            SettingsView(model: dashboard)
+            SettingsView(model: dashboard, setup: setup)
         case .sdkPackages:
             SDKPackagesView(model: packages)
         case .virtualDevices:
@@ -60,7 +77,9 @@ struct RootView: View {
     }
 
     private func acceptLicense() {
-        if devices.licensePrompt != nil {
+        if setup.licensePrompt != nil {
+            setup.acceptLicense()
+        } else if devices.licensePrompt != nil {
             devices.acceptLicense()
         } else if packages.licensePrompt != nil {
             packages.acceptLicense()
@@ -70,7 +89,9 @@ struct RootView: View {
     }
 
     private func declineLicense() {
-        if devices.licensePrompt != nil {
+        if setup.licensePrompt != nil {
+            setup.declineLicense()
+        } else if devices.licensePrompt != nil {
             devices.declineLicense()
         } else if packages.licensePrompt != nil {
             packages.declineLicense()
@@ -92,10 +113,12 @@ struct RootView: View {
     private var licenseSheetPresented: Binding<Bool> {
         Binding(
             get: {
-                dashboard.licensePrompt != nil || packages.licensePrompt != nil || devices.licensePrompt != nil
+                setup.licensePrompt != nil || dashboard.licensePrompt != nil
+                    || packages.licensePrompt != nil || devices.licensePrompt != nil
             },
             set: { isPresented in
                 if !isPresented {
+                    setup.declineLicenseIfNeeded()
                     dashboard.declineLicenseIfNeeded()
                     packages.declineLicenseIfNeeded()
                     devices.declineLicenseIfNeeded()
