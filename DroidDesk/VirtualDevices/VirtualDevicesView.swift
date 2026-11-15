@@ -20,9 +20,13 @@ struct VirtualDevicesView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
 
-                if model.showsSystemImage {
-                    systemImageRow
-                        .accessibilityLabel("System image")
+                if model.showsSystemImages {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("System images")
+                            .font(.headline)
+                        systemImageGroup
+                            .accessibilityLabel("System images")
+                    }
                 }
                 if !model.devices.isEmpty {
                     deviceGroup(model.devices)
@@ -62,23 +66,40 @@ struct VirtualDevicesView: View {
         )
     }
 
-    private var systemImageRow: some View {
+    private var systemImageGroup: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(model.systemImages.enumerated()), id: \.element.id) { index, status in
+                systemImageRow(status)
+                if index < model.systemImages.count - 1 {
+                    Divider()
+                }
+            }
+        }
+        .background(.background, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color(nsColor: .separatorColor))
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func systemImageRow(_ status: PhoneSystemImageStatus) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(PhoneSystemImage.title)
+                Text(status.image.title)
                 HStack(spacing: 6) {
                     StatusDot(
-                        color: model.systemImage == .ready ? .green : .red,
-                        label: model.systemImage == .ready ? "Ready" : "Missing"
+                        color: status.isInstalled ? .green : .red,
+                        label: status.isInstalled ? "Ready" : "Missing"
                     )
-                    Text(PhoneSystemImage.detail)
+                    Text(status.image.detail)
                         .foregroundStyle(.secondary)
                 }
                 .font(.caption.monospaced())
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 12)
-            if model.isInstallingImage {
+            if model.installingImageID == status.id {
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.small)
@@ -87,22 +108,17 @@ struct VirtualDevicesView: View {
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Installing the system image")
-            } else if model.systemImage != .ready {
-                Button("Install", action: model.installSystemImage)
+                .accessibilityLabel("Installing API \(status.image.api) system image")
+            } else if !status.isInstalled {
+                Button("Install") { model.install(status.image) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(model.isInstallingImage)
-                    .accessibilityLabel("Install the system image")
+                    .accessibilityLabel("Install API \(status.image.api) system image")
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(.background, in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color(nsColor: .separatorColor))
-        }
     }
 
     private func deviceGroup(_ devices: [VirtualDevice]) -> some View {
@@ -261,10 +277,10 @@ private struct DeleteDeviceSheet: View {
 @Observable
 final class VirtualDevicesModel {
     private(set) var devices: [VirtualDevice] = []
-    private(set) var systemImage: SystemImageState?
+    private(set) var systemImages: [PhoneSystemImageStatus] = []
     private(set) var avdmanagerReady = false
     private(set) var isChecking = false
-    private(set) var isInstallingImage = false
+    private(set) var installingImageID: String?
     private(set) var listFailed = false
     private(set) var imageListFailed = false
     private(set) var deleteTarget: VirtualDevice?
@@ -277,7 +293,8 @@ final class VirtualDevicesModel {
     private var licenseContinuation: CheckedContinuation<Bool, Never>?
     private let runner = CommandRunner()
 
-    var showsSystemImage: Bool { systemImage != nil || isInstallingImage }
+    var showsSystemImages: Bool { !systemImages.isEmpty || isInstallingImage }
+    var isInstallingImage: Bool { installingImageID != nil }
     var isStartingDevice: Bool { phases.values.contains(.starting) }
     var isDeletingDevice: Bool { deletingName != nil }
 
@@ -303,14 +320,15 @@ final class VirtualDevicesModel {
         await load()
     }
 
-    func installSystemImage() {
-        guard !isInstallingImage, systemImage == .missing, let root = SDKLocator.existingRoot() else { return }
-        isInstallingImage = true
+    func install(_ image: PhoneSystemImage) {
+        guard installingImageID == nil, let root = SDKLocator.existingRoot() else { return }
+        guard systemImages.contains(where: { $0.id == image.id && !$0.isInstalled }) else { return }
+        installingImageID = image.id
         failureTitle = "Install failed"
         installError = nil
         Task {
             let outcome = await SDKInstaller().installPackages(
-                [PhoneSystemImage.installIdentifier],
+                [image.installIdentifier],
                 sdkRoot: root,
                 environment: AndroidCommandEnvironment(sdkRoot: root).values
             ) { prompt in
@@ -319,7 +337,7 @@ final class VirtualDevicesModel {
             switch outcome {
             case .updated:
                 await self.load()
-                if !PhoneSystemImage.isInstalled(in: root) {
+                if !PhoneSystemImageCatalogue.isInstalled(image, in: root) {
                     self.installError = "The package could not be installed."
                 }
             case .declined:
@@ -328,7 +346,7 @@ final class VirtualDevicesModel {
                 self.failureTitle = "Install failed"
                 self.installError = message
             }
-            self.isInstallingImage = false
+            self.installingImageID = nil
         }
     }
 
@@ -361,7 +379,7 @@ final class VirtualDevicesModel {
             listFailed = true
         }
         devices = listed ?? []
-        systemImage = await systemImage(in: root)
+        systemImages = await systemImages(in: root)
         await adoptRunningEmulators(in: root)
         isChecking = false
     }
@@ -468,12 +486,17 @@ final class VirtualDevicesModel {
         }
     }
 
-    private func systemImage(in root: URL?) async -> SystemImageState? {
+    private func systemImages(in root: URL?) async -> [PhoneSystemImageStatus] {
         imageListFailed = false
-        guard let root else { return nil }
-        if PhoneSystemImage.isInstalled(in: root) { return .ready }
+        guard let root else { return [] }
+        let installed = PhoneSystemImageCatalogue.installed(in: root)
+        var byIdentifier = Dictionary(uniqueKeysWithValues: installed.map {
+            ($0.id, PhoneSystemImageStatus(image: $0, isInstalled: true))
+        })
         let executable = root.appending(path: AndroidSDKTool.sdkmanager.executableRelativePath)
-        guard FileManager.default.isExecutableFile(atPath: executable.path) else { return nil }
+        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            return sorted(Array(byIdentifier.values))
+        }
         guard let result = await runner.run(
             executable: executable,
             arguments: ["--list"],
@@ -481,9 +504,16 @@ final class VirtualDevicesModel {
             timeout: .seconds(30)
         ), result.exitCode == 0 else {
             imageListFailed = true
-            return nil
+            return sorted(Array(byIdentifier.values))
         }
-        return PhoneSystemImage.catalogueContains(result.standardOutput) ? .missing : nil
+        for image in PhoneSystemImageCatalogue.offered(in: result.standardOutput) where byIdentifier[image.id] == nil {
+            byIdentifier[image.id] = PhoneSystemImageStatus(image: image, isInstalled: false)
+        }
+        return sorted(Array(byIdentifier.values))
+    }
+
+    private func sorted(_ statuses: [PhoneSystemImageStatus]) -> [PhoneSystemImageStatus] {
+        statuses.sorted { VersionOrdering.isOlder($1.image.api, than: $0.image.api) }
     }
 
     private func devices(executable: URL?, root: URL?) async -> [VirtualDevice]? {
@@ -520,11 +550,6 @@ final class VirtualDevicesModel {
         licensePrompt = nil
         continuation?.resume(returning: accepted)
     }
-}
-
-enum SystemImageState: Equatable, Sendable {
-    case missing
-    case ready
 }
 
 private struct StatusDot: View {

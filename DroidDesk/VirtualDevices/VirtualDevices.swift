@@ -184,30 +184,87 @@ enum VirtualDeviceReader {
     }
 }
 
-/// The one phone image Virtual Devices can install: API 36, Google Play, arm64.
-enum PhoneSystemImage {
-    static let installIdentifier = "system-images;android-36;google_apis_playstore;arm64-v8a"
-    static let relativeDirectory = "system-images/android-36/google_apis_playstore/arm64-v8a"
-    static let title = "System image"
-    static let detail = "API 36 · Google Play · arm64-v8a"
+/// A phone system image Virtual Devices can install: Google Play, arm64, API 36 or 37.
+struct PhoneSystemImage: Identifiable, Equatable, Sendable {
+    var api: String
+    var installIdentifier: String
+    var relativeDirectory: String
 
-    static func isInstalled(in sdkRoot: URL) -> Bool {
+    var id: String { installIdentifier }
+    var title: String { "System image" }
+    var detail: String { "API \(api) · Google Play · arm64-v8a" }
+}
+
+struct PhoneSystemImageStatus: Identifiable, Equatable, Sendable {
+    var image: PhoneSystemImage
+    var isInstalled: Bool
+
+    var id: String { image.id }
+}
+
+enum PhoneSystemImageCatalogue {
+    /// Stable Google Play arm64 phone images for API 36 and 37, newest first.
+    /// Extensions, betas, 16 KB page images, and other form factors are left out.
+    static func offered(in listOutput: String) -> [PhoneSystemImage] {
+        var byIdentifier: [String: PhoneSystemImage] = [:]
+        for rawLine in listOutput.split(whereSeparator: \.isNewline) {
+            let column = rawLine.trimmingCharacters(in: .whitespaces)
+                .split(separator: "|", maxSplits: 1)
+                .first
+                .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            let identifier = column.replacingOccurrences(of: "/", with: ";")
+            guard let image = image(identifier: identifier) else { continue }
+            byIdentifier[image.id] = image
+        }
+        return sorted(Array(byIdentifier.values))
+    }
+
+    static func installed(in sdkRoot: URL) -> [PhoneSystemImage] {
+        let root = sdkRoot.appending(path: "system-images", directoryHint: .isDirectory)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+        let images = entries.compactMap { entry -> PhoneSystemImage? in
+            guard let image = image(apiDirectory: entry.lastPathComponent), isInstalled(image, in: sdkRoot) else {
+                return nil
+            }
+            return image
+        }
+        return sorted(images)
+    }
+
+    static func isInstalled(_ image: PhoneSystemImage, in sdkRoot: URL) -> Bool {
         var isDirectory: ObjCBool = false
-        let url = sdkRoot.appending(path: relativeDirectory, directoryHint: .isDirectory)
+        let url = sdkRoot.appending(path: image.relativeDirectory, directoryHint: .isDirectory)
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
-    static func catalogueContains(_ listOutput: String) -> Bool {
-        for rawLine in listOutput.split(whereSeparator: \.isNewline) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            let column = line.split(separator: "|", maxSplits: 1).first.map(String.init) ?? line
-            let identifier = column.trimmingCharacters(in: .whitespaces)
-                .split(whereSeparator: \.isWhitespace)
-                .first
-                .map(String.init) ?? ""
-            if identifier.replacingOccurrences(of: "/", with: ";") == installIdentifier { return true }
+    private static func image(identifier: String) -> PhoneSystemImage? {
+        let pattern = /system-images;android-(\d+(?:\.\d+)?);google_apis_playstore;arm64-v8a/
+        guard let api = identifier.wholeMatch(of: pattern)?.1 else { return nil }
+        return make(api: String(api))
+    }
+
+    private static func image(apiDirectory: String) -> PhoneSystemImage? {
+        let pattern = /android-(\d+(?:\.\d+)?)/
+        guard let api = apiDirectory.wholeMatch(of: pattern)?.1 else { return nil }
+        return make(api: String(api))
+    }
+
+    private static func make(api: String) -> PhoneSystemImage? {
+        guard let major = api.split(separator: ".").first, let value = Int(major), value == 36 || value == 37 else {
+            return nil
         }
-        return false
+        return PhoneSystemImage(
+            api: api,
+            installIdentifier: "system-images;android-\(api);google_apis_playstore;arm64-v8a",
+            relativeDirectory: "system-images/android-\(api)/google_apis_playstore/arm64-v8a"
+        )
+    }
+
+    private static func sorted(_ images: [PhoneSystemImage]) -> [PhoneSystemImage] {
+        images.sorted { VersionOrdering.isOlder($1.api, than: $0.api) }
     }
 }
 
