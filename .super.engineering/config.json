@@ -1,0 +1,11 @@
+{
+  "run": [
+    {
+      "name": "DroidDesk",
+      "commands": [
+        "xcodebuild -project DroidDesk.xcodeproj -scheme DroidDesk -configuration Debug -derivedDataPath .derivedData build && APP=.derivedData/Build/Products/Debug/DroidDesk.app && touch \"$APP\" && /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f \"$APP\" && open \"$APP\""
+      ],
+      "default": true
+    }
+  ]
+}
