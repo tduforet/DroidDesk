@@ -94,17 +94,19 @@ struct SDKPackagesView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(status.package.title)
-                Text(status.package.version)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    StatusDot(
+                        color: status.isInstalled ? .green : .red,
+                        label: status.isInstalled ? "Ready" : "Missing"
+                    )
+                    Text(status.package.version)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption.monospaced())
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 12)
             packageAction(status)
-            if status.isInstalled {
-                Text("Ready")
-                    .foregroundStyle(.green)
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -130,6 +132,18 @@ struct SDKPackagesView: View {
                 .disabled(model.isBusy)
                 .accessibilityLabel("Uninstall \(status.package.title) \(status.package.version)")
         }
+    }
+}
+
+private struct StatusDot: View {
+    var color: Color
+    var label: String
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .accessibilityLabel(label)
     }
 }
 

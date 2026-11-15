@@ -66,9 +66,15 @@ struct VirtualDevicesView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(PhoneSystemImage.title)
-                Text(PhoneSystemImage.detail)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    StatusDot(
+                        color: model.systemImage == .ready ? .green : .red,
+                        label: model.systemImage == .ready ? "Ready" : "Missing"
+                    )
+                    Text(PhoneSystemImage.detail)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption.monospaced())
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 12)
@@ -82,10 +88,7 @@ struct VirtualDevicesView: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Installing the system image")
-            } else if model.systemImage == .ready {
-                Text("Ready")
-                    .foregroundStyle(.green)
-            } else {
+            } else if model.systemImage != .ready {
                 Button("Install", action: model.installSystemImage)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -122,7 +125,12 @@ struct VirtualDevicesView: View {
     private func deviceRow(_ device: VirtualDevice) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(device.title)
+                HStack(spacing: 6) {
+                    Text(device.title)
+                    if model.deletingName != device.name {
+                        deviceStatusMark(model.phase(for: device))
+                    }
+                }
                 if !device.detail.isEmpty {
                     Text(device.detail)
                         .font(.caption.monospaced())
@@ -150,8 +158,10 @@ struct VirtualDevicesView: View {
                 .tint(.red)
                 .disabled(model.isDeletingDevice || model.isInstallingImage)
                 .accessibilityLabel("Delete \(device.title)")
-                Text(model.phase(for: device).label)
-                    .foregroundStyle(model.phase(for: device).color)
+                if model.phase(for: device) == .missingImage {
+                    Text(model.phase(for: device).label)
+                        .foregroundStyle(model.phase(for: device).color)
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -167,8 +177,9 @@ struct VirtualDevicesView: View {
             } label: {
                 Image(systemName: "play.fill")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .tint(.green)
             .disabled(model.isStartingDevice)
             .accessibilityLabel("Play \(device.title)")
         case .starting:
@@ -192,6 +203,20 @@ struct VirtualDevicesView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .accessibilityLabel("Stop \(device.title)")
+        case .missingImage:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func deviceStatusMark(_ phase: DevicePhase) -> some View {
+        switch phase {
+        case .ready:
+            PulsingStatusDot(color: .green, label: "Ready")
+        case .starting:
+            StatusDot(color: .orange, label: "Starting")
+        case .stopped:
+            StatusDot(color: .red, label: "Stopped")
         case .missingImage:
             EmptyView()
         }
@@ -500,6 +525,43 @@ final class VirtualDevicesModel {
 enum SystemImageState: Equatable, Sendable {
     case missing
     case ready
+}
+
+private struct StatusDot: View {
+    var color: Color
+    var label: String
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .accessibilityLabel(label)
+    }
+}
+
+/// A live device: the dot stays put and a ring expands until it fades.
+private struct PulsingStatusDot: View {
+    var color: Color
+    var label: String
+    @State private var pulsing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(0.45))
+                .scaleEffect(pulsing ? 2.4 : 1)
+                .opacity(pulsing ? 0 : 1)
+            Circle()
+                .fill(color)
+        }
+        .frame(width: 8, height: 8)
+        .accessibilityLabel(label)
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+                pulsing = true
+            }
+        }
+    }
 }
 
 enum DevicePhase: Equatable, Sendable {
