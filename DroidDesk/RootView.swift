@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(NavigationModel.self) private var navigation
     @State private var dashboard = DashboardModel()
+    @State private var packages = PackagesModel()
 
     var body: some View {
         @Bindable var navigation = navigation
@@ -21,43 +22,74 @@ struct RootView: View {
                 DashboardView(model: dashboard)
             case .settings:
                 SettingsView(model: dashboard)
-            case .virtualDevices, .sdkPackages, .activity:
+            case .sdkPackages:
+                SDKPackagesView(model: packages)
+            case .virtualDevices, .activity:
                 SectionPlaceholder(section: navigation.section)
             }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbarRole(.editor)
         .sheet(isPresented: licenseSheetPresented) {
-            if let license = dashboard.licensePrompt {
-                SDKLicenseSheet(license: license, accept: dashboard.acceptLicense, decline: dashboard.declineLicense)
+            if let license = packages.licensePrompt ?? dashboard.licensePrompt {
+                SDKLicenseSheet(license: license, accept: acceptLicense, decline: declineLicense)
             }
         }
         .alert(
-            dashboard.failureTitle,
+            packages.installError == nil ? dashboard.failureTitle : packages.failureTitle,
             isPresented: updateErrorPresented
         ) {
             Button("OK", role: .cancel) {
-                dashboard.dismissUpdateError()
+                if packages.installError != nil {
+                    packages.dismissInstallError()
+                } else {
+                    dashboard.dismissUpdateError()
+                }
             }
         } message: {
-            Text(dashboard.updateError ?? "")
+            Text(packages.installError ?? dashboard.updateError ?? "")
+        }
+    }
+
+    private func acceptLicense() {
+        if packages.licensePrompt != nil {
+            packages.acceptLicense()
+        } else {
+            dashboard.acceptLicense()
+        }
+    }
+
+    private func declineLicense() {
+        if packages.licensePrompt != nil {
+            packages.declineLicense()
+        } else {
+            dashboard.declineLicense()
         }
     }
 
     private var licenseSheetPresented: Binding<Bool> {
         Binding(
-            get: { dashboard.licensePrompt != nil },
+            get: { dashboard.licensePrompt != nil || packages.licensePrompt != nil },
             set: { isPresented in
-                if !isPresented { dashboard.declineLicenseIfNeeded() }
+                if !isPresented {
+                    dashboard.declineLicenseIfNeeded()
+                    packages.declineLicenseIfNeeded()
+                }
             }
         )
     }
 
     private var updateErrorPresented: Binding<Bool> {
         Binding(
-            get: { dashboard.updateError != nil },
+            get: { dashboard.updateError != nil || packages.installError != nil },
             set: { isPresented in
-                if !isPresented { dashboard.dismissUpdateError() }
+                if !isPresented {
+                    if packages.installError != nil {
+                        packages.dismissInstallError()
+                    } else {
+                        dashboard.dismissUpdateError()
+                    }
+                }
             }
         )
     }

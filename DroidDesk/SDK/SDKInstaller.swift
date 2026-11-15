@@ -27,9 +27,12 @@ struct SDKInstaller: Sendable {
         }
         let outcome = await run(
             packageIDs: [package.installIdentifier],
+            flag: "--install",
             sdkRoot: sdkRoot,
             environment: environment,
             launchFailure: "The update could not start.",
+            promptFailure: "The update could not answer the license prompt.",
+            timeoutFailure: "The update timed out.",
             onLicense: onLicense
         )
         guard case .updated = outcome else { return outcome }
@@ -51,9 +54,31 @@ struct SDKInstaller: Sendable {
     ) async -> SDKInstallOutcome {
         await run(
             packageIDs: packageIDs,
+            flag: "--install",
             sdkRoot: sdkRoot,
             environment: environment,
             launchFailure: "The package could not be installed.",
+            promptFailure: "The update could not answer the license prompt.",
+            timeoutFailure: "The update timed out.",
+            onLicense: onLicense
+        )
+    }
+
+    /// Removes one package with `sdkmanager --uninstall`. A prompt is answered only after `onLicense` returns.
+    func uninstallPackage(
+        _ packageID: String,
+        sdkRoot: URL,
+        environment: [String: String],
+        onLicense: @escaping @MainActor (SDKLicensePrompt) async -> Bool
+    ) async -> SDKInstallOutcome {
+        await run(
+            packageIDs: [packageID],
+            flag: "--uninstall",
+            sdkRoot: sdkRoot,
+            environment: environment,
+            launchFailure: "The package could not be uninstalled.",
+            promptFailure: "The uninstall could not answer the prompt.",
+            timeoutFailure: "The uninstall timed out.",
             onLicense: onLicense
         )
     }
@@ -87,15 +112,18 @@ struct SDKInstaller: Sendable {
 
     private func run(
         packageIDs: [String],
+        flag: String,
         sdkRoot: URL,
         environment: [String: String],
         launchFailure: String,
+        promptFailure: String,
+        timeoutFailure: String,
         onLicense: @escaping @MainActor (SDKLicensePrompt) async -> Bool
     ) async -> SDKInstallOutcome {
         let process = Process()
         let executable = sdkRoot.appending(path: AndroidSDKTool.sdkmanager.executableRelativePath)
         process.executableURL = executable
-        process.arguments = ["--sdk_root=\(sdkRoot.path)", "--install"] + packageIDs
+        process.arguments = ["--sdk_root=\(sdkRoot.path)", flag] + packageIDs
         process.environment = environment
 
         let pipe = Pipe()
@@ -153,7 +181,7 @@ struct SDKInstaller: Sendable {
                         guard stdin.write(declined ? "n\n" : "y\n") else {
                             if process.isRunning { process.terminate() }
                             _ = await exit.value()
-                            return .failed("The update could not answer the license prompt.")
+                            return .failed(promptFailure)
                         }
                         handled = output.distance(from: output.startIndex, to: continuePrompt.upperBound)
                         continue
@@ -164,7 +192,7 @@ struct SDKInstaller: Sendable {
                 guard stdin.write(accepted ? "y\n" : "n\n") else {
                     if process.isRunning { process.terminate() }
                     _ = await exit.value()
-                    return .failed("The update could not answer the license prompt.")
+                    return .failed(promptFailure)
                 }
                 if !accepted { declined = true }
                 handled = pending.handledCharacters
@@ -174,7 +202,7 @@ struct SDKInstaller: Sendable {
         let code = await exit.value()
         if declined { return .declined }
         if timedOut.withLock({ $0 }) {
-            return .failed("The update timed out.")
+            return .failed(timeoutFailure)
         }
         if code == 0 { return .updated }
         return .failed(SDKInstallReport.failureMessage(in: output))
