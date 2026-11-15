@@ -67,6 +67,16 @@ struct VirtualDevicesView: View {
                 create: model.create
             )
         }
+        .confirmationDialog(
+            "Wipe data for \(model.wipeTarget?.title ?? "this device")?",
+            isPresented: wipeDialogPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Wipe Data", role: .destructive, action: model.confirmWipe)
+            Button("Cancel", role: .cancel, action: model.cancelWipe)
+        } message: {
+            Text("Apps, accounts, and files on this device will be erased. The device itself stays.")
+        }
         .sheet(isPresented: deleteSheetPresented) {
             if let device = model.deleteTarget {
                 DeleteDeviceSheet(
@@ -99,6 +109,15 @@ struct VirtualDevicesView: View {
             .disabled(!model.canCreateDevice)
             .help(model.installedImages.isEmpty ? "Install a system image first." : "Create a virtual device")
         }
+    }
+
+    private var wipeDialogPresented: Binding<Bool> {
+        Binding(
+            get: { model.wipeTarget != nil },
+            set: { isPresented in
+                if !isPresented { model.cancelWipe() }
+            }
+        )
     }
 
     private var deleteSheetPresented: Binding<Bool> {
@@ -208,17 +227,7 @@ struct VirtualDevicesView: View {
                     .foregroundStyle(.secondary)
             } else {
                 deviceControls(device)
-                Button {
-                    model.requestDelete(device)
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 16, height: 14)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(.red)
-                .disabled(model.isDeletingDevice || model.isInstallingImage || model.isCreatingDevice)
-                .accessibilityLabel("Delete \(device.title)")
+                optionsMenu(device)
                 if model.phase(for: device) == .missingImage {
                     Text(model.phase(for: device).label)
                         .foregroundStyle(model.phase(for: device).color)
@@ -227,6 +236,36 @@ struct VirtualDevicesView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+    }
+
+    private func optionsMenu(_ device: VirtualDevice) -> some View {
+        let phase = model.phase(for: device)
+        let canStart = phase == .stopped && !model.isStartingDevice && !model.isInstallingImage
+        let busy = model.isDeletingDevice || model.isInstallingImage || model.isCreatingDevice
+        return Menu {
+            if phase != .missingImage {
+                Button("Cold Boot") { model.play(device, mode: .coldBoot) }
+                    .disabled(!canStart)
+                Button("Wipe Data…", role: .destructive) { model.requestWipe(device) }
+                    .disabled(!canStart)
+                if phase != .stopped {
+                    Text("Stop the device to cold boot or wipe it")
+                }
+                Divider()
+            }
+            Button("Delete…", role: .destructive) { model.requestDelete(device) }
+                .disabled(busy)
+        } label: {
+            Image(systemName: "ellipsis")
+                .frame(width: 16, height: 14)
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .fixedSize()
+        .help("More actions")
+        .accessibilityLabel("More actions for \(device.title)")
     }
 
     @ViewBuilder
@@ -435,6 +474,7 @@ final class VirtualDevicesModel {
     private(set) var listFailed = false
     private(set) var imageListFailed = false
     private(set) var deleteTarget: VirtualDevice?
+    private(set) var wipeTarget: VirtualDevice?
     private(set) var deletingName: String?
     private(set) var creatingName: String?
     private(set) var creationProfiles: [HardwareProfile] = []
@@ -649,7 +689,7 @@ final class VirtualDevicesModel {
         hasLoaded = true
     }
 
-    func play(_ device: VirtualDevice) {
+    func play(_ device: VirtualDevice, mode: EmulatorStartMode = .normal) {
         guard phase(for: device) == .stopped, !isInstallingImage, let root = SDKLocator.existingRoot() else { return }
         let executable = root.appending(path: AndroidSDKTool.emulator.executableRelativePath)
         guard FileManager.default.isExecutableFile(atPath: executable.path) else {
@@ -663,7 +703,7 @@ final class VirtualDevicesModel {
         installError = nil
         launchTasks[name]?.cancel()
         launchTasks[name] = Task { [weak self] in
-            let outcome = await EmulatorSession().run(avdName: name, sdkRoot: root) {
+            let outcome = await EmulatorSession().run(avdName: name, sdkRoot: root, mode: mode) {
                 self?.phases[name] = .ready
             }
             guard let self else { return }
@@ -677,6 +717,21 @@ final class VirtualDevicesModel {
             }
             self.launchTasks[name] = nil
         }
+    }
+
+    func requestWipe(_ device: VirtualDevice) {
+        guard phase(for: device) == .stopped, !isInstallingImage, !isDeletingDevice else { return }
+        wipeTarget = device
+    }
+
+    func cancelWipe() {
+        wipeTarget = nil
+    }
+
+    func confirmWipe() {
+        guard let device = wipeTarget else { return }
+        wipeTarget = nil
+        play(device, mode: .wipeData)
     }
 
     func requestDelete(_ device: VirtualDevice) {

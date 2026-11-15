@@ -7,6 +7,29 @@ enum EmulatorOutcome: Sendable {
     case failed(String)
 }
 
+/// How an AVD is started. Cold boot skips the saved snapshot; wipe data also resets the device to factory state.
+enum EmulatorStartMode: Sendable {
+    case normal
+    case coldBoot
+    case wipeData
+
+    var flags: [String] {
+        switch self {
+        case .normal: []
+        case .coldBoot: ["-no-snapshot-load"]
+        case .wipeData: ["-wipe-data"]
+        }
+    }
+
+    func activityTitle(for avdName: String) -> String {
+        switch self {
+        case .normal: "Start \(avdName)"
+        case .coldBoot: "Cold boot \(avdName)"
+        case .wipeData: "Wipe data and start \(avdName)"
+        }
+    }
+}
+
 /// Starts one AVD with the official `emulator` binary and watches `adb` until it has booted.
 struct EmulatorSession: Sendable {
     private let runner = CommandRunner()
@@ -43,17 +66,18 @@ struct EmulatorSession: Sendable {
     func run(
         avdName: String,
         sdkRoot: URL,
+        mode: EmulatorStartMode = .normal,
         onReady: @escaping @MainActor () -> Void
     ) async -> EmulatorOutcome {
         let executable = sdkRoot.appending(path: AndroidSDKTool.emulator.executableRelativePath)
         let process = Process()
         process.executableURL = executable
         process.currentDirectoryURL = executable.deletingLastPathComponent()
-        let arguments = EmulatorLaunchArguments.arguments(avdName: avdName, sdkRoot: sdkRoot)
+        let arguments = EmulatorLaunchArguments.arguments(avdName: avdName, sdkRoot: sdkRoot, mode: mode)
         process.arguments = arguments
         process.environment = AndroidCommandEnvironment(sdkRoot: sdkRoot).values
         let activityID = await ActivityLog.shared.begin(
-            title: "Start \(avdName)",
+            title: mode.activityTitle(for: avdName),
             command: ActivityCommand.line(executable: executable, arguments: arguments)
         )
         let output = Pipe()
@@ -207,8 +231,8 @@ struct EmulatorSession: Sendable {
 
 /// Passes a plain width×height skin when the AVD's device skin is no longer in the SDK.
 enum EmulatorLaunchArguments {
-    static func arguments(avdName: String, sdkRoot: URL) -> [String] {
-        var arguments = ["-avd", avdName]
+    static func arguments(avdName: String, sdkRoot: URL, mode: EmulatorStartMode = .normal) -> [String] {
+        var arguments = ["-avd", avdName] + mode.flags
         if let size = missingSkinSize(avdName: avdName, sdkRoot: sdkRoot) {
             arguments += ["-skin", size]
         }
