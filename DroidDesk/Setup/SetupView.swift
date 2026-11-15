@@ -10,9 +10,11 @@ struct SetupView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Set up Android")
+                    Text(model.isComplete ? "Android is ready" : "Set up Android")
                         .font(.largeTitle.weight(.semibold))
-                    Text("DroidDesk installs the official Android SDK and creates a virtual device. No Android Studio needed.")
+                    Text(model.isComplete
+                         ? "The SDK and a virtual device are installed. Start the device now, or close the setup."
+                         : "DroidDesk installs the official Android SDK and creates a virtual device. No Android Studio needed.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -33,10 +35,16 @@ struct SetupView: View {
                             .accessibilityLabel("Working")
                     }
                     Spacer()
-                    Button("Skip setup", action: model.skip)
-                        .buttonStyle(.link)
-                        .disabled(!model.canLeave)
-                        .help("Use DroidDesk without the guided setup")
+                    if model.isComplete {
+                        Button("Done", action: model.finish)
+                            .disabled(!model.canLeave)
+                            .help("Close the setup and go to the Dashboard")
+                    } else {
+                        Button("Skip setup", action: model.skip)
+                            .buttonStyle(.link)
+                            .disabled(!model.canLeave)
+                            .help("Use DroidDesk without the guided setup")
+                    }
                 }
             }
             .padding(32)
