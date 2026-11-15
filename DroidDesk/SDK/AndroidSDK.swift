@@ -1,5 +1,16 @@
 import Foundation
 
+/// Oldest Android API DroidDesk offers for platforms, build-tools, and phone images.
+/// Newer stable releases stay in the lists without an app update.
+enum AndroidAPIFloor {
+    static let minimum = 36
+
+    static func includes(_ version: String) -> Bool {
+        guard let major = version.split(separator: ".").first, let value = Int(major) else { return false }
+        return value >= minimum
+    }
+}
+
 /// The four tools the Dashboard reports. Managers come first, then the tools they install.
 enum AndroidSDKTool: String, CaseIterable, Identifiable, Sendable {
     case sdkmanager

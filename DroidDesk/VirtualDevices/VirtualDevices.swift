@@ -184,7 +184,7 @@ enum VirtualDeviceReader {
     }
 }
 
-/// A phone system image Virtual Devices can install: Google Play, arm64, API 36 or 37.
+/// A phone system image Virtual Devices can install: Google Play, arm64, API 36 or newer.
 struct PhoneSystemImage: Identifiable, Equatable, Sendable {
     var api: String
     var installIdentifier: String
@@ -203,7 +203,7 @@ struct PhoneSystemImageStatus: Identifiable, Equatable, Sendable {
 }
 
 enum PhoneSystemImageCatalogue {
-    /// Stable Google Play arm64 phone images for API 36 and 37, newest first.
+    /// Stable Google Play arm64 phone images from API 36 upward, newest first.
     /// Extensions, betas, 16 KB page images, and other form factors are left out.
     static func offered(in listOutput: String) -> [PhoneSystemImage] {
         var byIdentifier: [String: PhoneSystemImage] = [:]
@@ -253,9 +253,7 @@ enum PhoneSystemImageCatalogue {
     }
 
     private static func make(api: String) -> PhoneSystemImage? {
-        guard let major = api.split(separator: ".").first, let value = Int(major), value == 36 || value == 37 else {
-            return nil
-        }
+        guard AndroidAPIFloor.includes(api) else { return nil }
         return PhoneSystemImage(
             api: api,
             installIdentifier: "system-images;android-\(api);google_apis_playstore;arm64-v8a",

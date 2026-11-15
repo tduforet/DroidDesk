@@ -13,7 +13,7 @@ struct SDKPackagesView: View {
                         .font(.callout.monospaced())
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
-                    Text("API 36 and 37, including minor versions.")
+                    Text("API 36 and newer, including minor versions.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

@@ -31,26 +31,18 @@ struct StudioPackageStatus: Identifiable, Equatable, Sendable {
 }
 
 enum StudioPackageCatalogue {
-    /// API 36 is the current Play floor. API 37 is the current Android release. Minor versions of both are included.
-    private static let offeredPlatformMajors: Set<Int> = [36, 37]
-
-    /// Stable platforms for the offered API levels, newest first. Extensions, betas, and canaries are left out.
+    /// Stable platforms from API 36 upward, newest first. Extensions, betas, and canaries are left out.
     static func offeredPlatforms(in listOutput: String) -> [StudioPackage] {
         candidates(in: listOutput)
-            .filter { $0.kind == .platform && isOfferedMajor($0.version) }
+            .filter { $0.kind == .platform && AndroidAPIFloor.includes($0.version) }
             .sorted { VersionOrdering.isOlder($1.version, than: $0.version) }
     }
 
-    /// Stable build-tools for the offered API levels, newest first. Release candidates are left out.
+    /// Stable build-tools from API 36 upward, newest first. Release candidates are left out.
     static func offeredBuildTools(in listOutput: String) -> [StudioPackage] {
         candidates(in: listOutput)
-            .filter { $0.kind == .buildTools && isOfferedMajor($0.version) }
+            .filter { $0.kind == .buildTools && AndroidAPIFloor.includes($0.version) }
             .sorted { VersionOrdering.isOlder($1.version, than: $0.version) }
-    }
-
-    private static func isOfferedMajor(_ version: String) -> Bool {
-        guard let major = version.split(separator: ".").first, let value = Int(major) else { return false }
-        return offeredPlatformMajors.contains(value)
     }
 
     static func candidates(in listOutput: String) -> [StudioPackage] {
