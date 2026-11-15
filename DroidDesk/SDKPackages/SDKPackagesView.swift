@@ -7,7 +7,7 @@ struct SDKPackagesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.isChecking && model.platforms.isEmpty ? "Checking packages…" : "Platforms")
+                    Text("Platforms")
                         .font(.title2.weight(.semibold))
                     Text(model.path)
                         .font(.callout.monospaced())
@@ -20,6 +20,14 @@ struct SDKPackagesView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
 
+                if !model.hasLoaded {
+                    SkeletonGroup(rows: 4, label: "Loading platforms")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Build-tools")
+                            .font(.headline)
+                        SkeletonGroup(rows: 3, label: "Loading build-tools")
+                    }
+                }
                 if !model.platforms.isEmpty {
                     packageGroup(model.platforms)
                         .accessibilityLabel("Platforms")
@@ -39,7 +47,7 @@ struct SDKPackagesView: View {
                         packageGroup(model.installed)
                     }
                 }
-                if let note = model.note {
+                if model.hasLoaded, let note = model.note {
                     Text(note)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -200,6 +208,7 @@ final class PackagesModel {
     private(set) var uninstallTarget: StudioPackage?
     private(set) var sdkmanagerReady = false
     private(set) var isChecking = false
+    private(set) var hasLoaded = false
     private(set) var catalogueFailed = false
     private var packageWork: PackageWork?
     private(set) var workingIdentifier: String?
@@ -347,6 +356,7 @@ final class PackagesModel {
             }
             .map { StudioPackageStatus(package: $0, isInstalled: true) }
         isChecking = false
+        hasLoaded = true
     }
 
     private var offered: [StudioPackageStatus] {

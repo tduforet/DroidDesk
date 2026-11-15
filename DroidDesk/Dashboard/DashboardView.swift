@@ -6,7 +6,18 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                SDKVerdictView(title: model.title, path: model.path)
+                if model.tools == nil {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SkeletonBar(width: 260, height: 22)
+                        SkeletonBar(width: 340, height: 12)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Checking the SDK")
+                    SkeletonGroup(rows: 1, label: "Loading command-line tools")
+                    SkeletonGroup(rows: 2, label: "Loading adb and emulator")
+                } else {
+                    SDKVerdictView(title: model.title, path: model.path)
+                }
                 if let tools = model.tools {
                     SDKToolList(
                         tools: tools,
@@ -54,8 +65,7 @@ final class DashboardModel {
     private var licenseContinuation: CheckedContinuation<Bool, Never>?
 
     var title: String {
-        if isChecking, inspection == nil { return "Checking the SDK…" }
-        return inspection?.title ?? "Checking the SDK…"
+        inspection?.title ?? ""
     }
 
     var path: String? {

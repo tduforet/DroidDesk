@@ -8,7 +8,7 @@ struct VirtualDevicesView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(model.isChecking && model.devices.isEmpty ? "Checking devices…" : "Virtual devices")
+                        Text("Virtual devices")
                             .font(.title2.weight(.semibold))
                         Text(model.path)
                             .font(.callout.monospaced())
@@ -23,6 +23,18 @@ struct VirtualDevicesView: View {
                     createControl
                 }
 
+                if !model.devicesLoaded {
+                    SkeletonGroup(rows: 2, label: "Loading virtual devices")
+                }
+                if !model.devices.isEmpty {
+                    deviceGroup(model.devices)
+                        .accessibilityLabel("Virtual devices")
+                }
+                if model.hasLoaded, let note = model.note {
+                    Text(note)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 if model.showsSystemImages {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("System images")
@@ -30,15 +42,12 @@ struct VirtualDevicesView: View {
                         systemImageGroup
                             .accessibilityLabel("System images")
                     }
-                }
-                if !model.devices.isEmpty {
-                    deviceGroup(model.devices)
-                        .accessibilityLabel("Virtual devices")
-                }
-                if let note = model.note {
-                    Text(note)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                } else if !model.hasLoaded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("System images")
+                            .font(.headline)
+                        SkeletonGroup(rows: 2, label: "Loading system images")
+                    }
                 }
             }
             .padding(24)
@@ -203,6 +212,7 @@ struct VirtualDevicesView: View {
                     model.requestDelete(device)
                 } label: {
                     Image(systemName: "trash")
+                        .frame(width: 16, height: 14)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -227,6 +237,7 @@ struct VirtualDevicesView: View {
                 model.play(device)
             } label: {
                 Image(systemName: "play.fill")
+                    .frame(width: 16, height: 14)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
@@ -241,6 +252,7 @@ struct VirtualDevicesView: View {
                 model.stop(device)
             } label: {
                 Image(systemName: "stop.fill")
+                    .frame(width: 16, height: 14)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -250,6 +262,7 @@ struct VirtualDevicesView: View {
                 model.stop(device)
             } label: {
                 Image(systemName: "stop.fill")
+                    .frame(width: 16, height: 14)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -416,6 +429,8 @@ final class VirtualDevicesModel {
     private(set) var systemImages: [PhoneSystemImageStatus] = []
     private(set) var avdmanagerReady = false
     private(set) var isChecking = false
+    private(set) var hasLoaded = false
+    private(set) var devicesLoaded = false
     private(set) var installingImageID: String?
     private(set) var listFailed = false
     private(set) var imageListFailed = false
@@ -627,9 +642,11 @@ final class VirtualDevicesModel {
             listFailed = true
         }
         devices = listed ?? []
+        devicesLoaded = true
         systemImages = await systemImages(in: root)
         await adoptRunningEmulators(in: root)
         isChecking = false
+        hasLoaded = true
     }
 
     func play(_ device: VirtualDevice) {
