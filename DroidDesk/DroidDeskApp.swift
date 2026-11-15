@@ -4,11 +4,20 @@ import SwiftUI
 struct DroidDeskApp: App {
     @State private var navigation = NavigationModel()
 
+    private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     var body: some Scene {
         Window("DroidDesk", id: "main") {
-            RootView()
-                .environment(navigation)
-                .frame(minWidth: 760, minHeight: 480)
+            if Self.isRunningTests {
+                // Tests are hosted by the app. Leave the SDK, the AVDs, and the preferences of this Mac alone.
+                Color.clear
+            } else {
+                RootView()
+                    .environment(navigation)
+                    .frame(minWidth: 760, minHeight: 480)
+            }
         }
         .defaultSize(width: 980, height: 640)
         .commands {
