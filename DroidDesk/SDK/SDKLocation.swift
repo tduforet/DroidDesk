@@ -20,14 +20,14 @@ enum SDKLocationStore {
 }
 
 enum SDKPathRules {
-    static func isUnderHome(_ url: URL) -> Bool {
-        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.resolvingSymlinksInPath().path
+    static func isUnderHome(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+        let home = home.standardizedFileURL.resolvingSymlinksInPath().path
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path
         return path != home && path.hasPrefix(home + "/")
     }
 
-    static func isProtected(_ url: URL) -> Bool {
-        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.resolvingSymlinksInPath()
+    static func isProtected(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+        let home = home.standardizedFileURL.resolvingSymlinksInPath()
         let protected = [
             "Desktop", "Documents", "Downloads", "Pictures", "Movies", "Music", "Public", "Applications", "Library",
             "Library/Android", ".android",
@@ -45,11 +45,11 @@ enum SDKPathRules {
 enum SDKInstallLocation {
     static let rejectionMessage = "Choose a folder inside your home directory."
 
-    static func accepted(_ url: URL) -> URL? {
+    static func accepted(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         let presented = url.standardizedFileURL
         let resolved = presented.resolvingSymlinksInPath()
-        guard SDKPathRules.isUnderHome(presented), SDKPathRules.isUnderHome(resolved) else { return nil }
-        guard !SDKPathRules.isProtected(presented), !SDKPathRules.isProtected(resolved) else { return nil }
+        guard SDKPathRules.isUnderHome(presented, home: home), SDKPathRules.isUnderHome(resolved, home: home) else { return nil }
+        guard !SDKPathRules.isProtected(presented, home: home), !SDKPathRules.isProtected(resolved, home: home) else { return nil }
         if FileManager.default.fileExists(atPath: presented.path) {
             let values = try? presented.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
             guard values?.isSymbolicLink != true, values?.isDirectory == true else { return nil }

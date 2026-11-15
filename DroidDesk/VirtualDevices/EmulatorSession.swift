@@ -231,16 +231,21 @@ struct EmulatorSession: Sendable {
 
 /// Passes a plain width×height skin when the AVD's device skin is no longer in the SDK.
 enum EmulatorLaunchArguments {
-    static func arguments(avdName: String, sdkRoot: URL, mode: EmulatorStartMode = .normal) -> [String] {
+    static func arguments(
+        avdName: String,
+        sdkRoot: URL,
+        mode: EmulatorStartMode = .normal,
+        avdHome: URL = AVDLocation.directory
+    ) -> [String] {
         var arguments = ["-avd", avdName] + mode.flags
-        if let size = missingSkinSize(avdName: avdName, sdkRoot: sdkRoot) {
+        if let size = missingSkinSize(avdName: avdName, sdkRoot: sdkRoot, avdHome: avdHome) {
             arguments += ["-skin", size]
         }
         return arguments
     }
 
-    private static func missingSkinSize(avdName: String, sdkRoot: URL) -> String? {
-        let config = configuration(avdName: avdName)
+    private static func missingSkinSize(avdName: String, sdkRoot: URL, avdHome: URL) -> String? {
+        let config = configuration(avdName: avdName, avdHome: avdHome)
         guard !skinIsInstalled(config, sdkRoot: sdkRoot) else { return nil }
         if let name = config["skin.name"], name.wholeMatch(of: /^\d+x\d+$/) != nil { return nil }
         guard let width = config["hw.lcd.width"], let height = config["hw.lcd.height"],
@@ -258,10 +263,10 @@ enum EmulatorLaunchArguments {
         return roots.contains { directoryExists($0.path) }
     }
 
-    private static func configuration(avdName: String) -> [String: String] {
-        let pointer = AVDConfig.values(in: AVDLocation.directory.appending(path: "\(avdName).ini"))
+    private static func configuration(avdName: String, avdHome: URL) -> [String: String] {
+        let pointer = AVDConfig.values(in: avdHome.appending(path: "\(avdName).ini"))
         let directory = pointer["path"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-            ?? AVDLocation.directory.appending(path: "\(avdName).avd", directoryHint: .isDirectory)
+            ?? avdHome.appending(path: "\(avdName).avd", directoryHint: .isDirectory)
         return AVDConfig.read(directory: directory)
     }
 

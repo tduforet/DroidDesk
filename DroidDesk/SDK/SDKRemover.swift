@@ -12,17 +12,9 @@ enum SDKRemover {
             title: "Remove SDK",
             command: SDKPathDisplay.tilde(root)
         )
-        let outcome = await Task.detached(priority: .userInitiated) { () -> Outcome in
-            do {
-                try perform(root)
-                return .removed
-            } catch let failure as RemovalFailure {
-                return .failed(failure.message)
-            } catch let cocoa as CocoaError where cocoa.code == .fileReadNoSuchFile || cocoa.code == .fileNoSuchFile {
-                return .failed("The SDK folder is already gone.")
-            } catch {
-                return .failed("The SDK folder could not be removed.")
-            }
+        let configured = SDKLocationStore.url
+        let outcome = await Task.detached(priority: .userInitiated) {
+            removeNow(root, configured: configured)
         }.value
         switch outcome {
         case .removed:
@@ -45,8 +37,26 @@ enum SDKRemover {
         return outcome
     }
 
-    private static func perform(_ root: URL) throws {
-        let target = try validatedTarget(root)
+    /// Validates and deletes `root`. `home` and `configured` are parameters so tests never touch the real ones.
+    static func removeNow(
+        _ root: URL,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        configured: URL? = SDKLocationStore.url
+    ) -> Outcome {
+        do {
+            try perform(root, home: home, configured: configured)
+            return .removed
+        } catch let failure as RemovalFailure {
+            return .failed(failure.message)
+        } catch let cocoa as CocoaError where cocoa.code == .fileReadNoSuchFile || cocoa.code == .fileNoSuchFile {
+            return .failed("The SDK folder is already gone.")
+        } catch {
+            return .failed("The SDK folder could not be removed.")
+        }
+    }
+
+    private static func perform(_ root: URL, home: URL, configured: URL?) throws {
+        let target = try validatedTarget(root, home: home, configured: configured)
         let holding = target.deletingLastPathComponent()
             .appending(path: ".\(target.lastPathComponent)-removing-\(UUID().uuidString)", directoryHint: .isDirectory)
         do {
@@ -70,7 +80,7 @@ enum SDKRemover {
     }
 
     /// The folder DroidDesk is allowed to delete: the usual SDK path, or another SDK root that already contains SDK packages.
-    private static func validatedTarget(_ root: URL) throws -> URL {
+    private static func validatedTarget(_ root: URL, home: URL, configured: URL?) throws -> URL {
         let presented = root.standardizedFileURL
         guard presented.path != "/", presented.path != "/Users" else {
             throw RemovalFailure(message: refusedMessage)
@@ -84,15 +94,15 @@ enum SDKRemover {
         }
 
         let resolved = presented.resolvingSymlinksInPath()
-        guard SDKPathRules.isUnderHome(presented), SDKPathRules.isUnderHome(resolved) else {
+        guard SDKPathRules.isUnderHome(presented, home: home), SDKPathRules.isUnderHome(resolved, home: home) else {
             throw RemovalFailure(message: refusedMessage)
         }
-        guard !SDKPathRules.isProtected(presented), !SDKPathRules.isProtected(resolved) else {
+        guard !SDKPathRules.isProtected(presented, home: home), !SDKPathRules.isProtected(resolved, home: home) else {
             throw RemovalFailure(message: refusedMessage)
         }
-        let conventional = SDKLocator.conventionalRoot.standardizedFileURL.resolvingSymlinksInPath().path
-        let configured = SDKLocationStore.url?.resolvingSymlinksInPath().path
-        if resolved.path == conventional || resolved.path == configured {
+        let conventional = SDKLocator.conventionalRoot(home: home).standardizedFileURL.resolvingSymlinksInPath().path
+        let configuredPath = configured?.resolvingSymlinksInPath().path
+        if resolved.path == conventional || resolved.path == configuredPath {
             return presented
         }
         guard SDKPathRules.containsSDKMarker(resolved) else {

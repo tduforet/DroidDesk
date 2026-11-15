@@ -1,0 +1,7 @@
+List of devices attached
+emulator-5554	device
+emulator-5556	offline
+R58N123ABC	device
+emulator-5558	unauthorized
+emulator-5560	device
+

@@ -1,0 +1,12 @@
+Available Android Virtual Devices:
+    Name: Pixel_9a_API_37
+  Device: pixel_9a (Google)
+    Path: /Users/test/.android/avd/Pixel_9a_API_37.avd
+  Target: Google Play (Google Inc.)
+          Based on: Android 17.0 ("CinnamonBun") Tag/ABI: google_apis_playstore/arm64-v8a
+  Sdcard: 512 MB
+---------
+The following Android Virtual Devices could not be loaded:
+    Name: Pixel_8a
+    Path: /Users/test/.android/avd/Pixel_8a.avd
+   Error: Missing system image for android-36/google_apis_playstore/arm64-v8a Pixel_8a. Download it with the SDK manager.

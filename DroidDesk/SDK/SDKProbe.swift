@@ -89,14 +89,21 @@ struct SDKProbe: Sendable {
 
 enum SDKLocator {
     static var conventionalRoot: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Android/sdk", directoryHint: .isDirectory)
+        conventionalRoot(home: FileManager.default.homeDirectoryForCurrentUser)
+    }
+
+    static func conventionalRoot(home: URL) -> URL {
+        home.appending(path: "Library/Android/sdk", directoryHint: .isDirectory)
     }
 
     /// The folder chosen in the app, then `ANDROID_SDK_ROOT`, `ANDROID_HOME`, then the usual Mac location.
-    static func existingRoot(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+    static func existingRoot(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        configured: URL? = SDKLocationStore.url,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL? {
         var seen = Set<String>()
-        for candidate in candidates(environment: environment) {
+        for candidate in candidates(environment: environment, configured: configured, home: home) {
             let standardized = candidate.standardizedFileURL
             guard seen.insert(standardized.path).inserted else { continue }
             var isDirectory: ObjCBool = false
@@ -107,9 +114,13 @@ enum SDKLocator {
         return nil
     }
 
-    static func candidates(environment: [String: String]) -> [URL] {
+    static func candidates(
+        environment: [String: String],
+        configured: URL? = SDKLocationStore.url,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [URL] {
         var urls: [URL] = []
-        if let configured = SDKLocationStore.url {
+        if let configured {
             urls.append(configured)
         }
         for key in ["ANDROID_SDK_ROOT", "ANDROID_HOME"] {
@@ -117,7 +128,7 @@ enum SDKLocator {
                 urls.append(URL(fileURLWithPath: value, isDirectory: true))
             }
         }
-        urls.append(conventionalRoot)
+        urls.append(conventionalRoot(home: home))
         return urls
     }
 }

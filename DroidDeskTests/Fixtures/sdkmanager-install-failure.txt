@@ -1,0 +1,5 @@
+Warning: Could not create settings
+[=======================================] 100% Computing updates...
+Warning: Failed to download any source lists!
+Warning: Dependant package with key emulator not found!
+Install failed: platforms;android-99 (platforms;android-99)
