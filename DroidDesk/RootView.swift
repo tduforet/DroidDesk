@@ -4,6 +4,7 @@ struct RootView: View {
     @Environment(NavigationModel.self) private var navigation
     @State private var dashboard = DashboardModel()
     @State private var packages = PackagesModel()
+    @State private var devices = VirtualDevicesModel()
 
     var body: some View {
         @Bindable var navigation = navigation
@@ -24,35 +25,39 @@ struct RootView: View {
                 SettingsView(model: dashboard)
             case .sdkPackages:
                 SDKPackagesView(model: packages)
-            case .virtualDevices, .activity:
+            case .virtualDevices:
+                VirtualDevicesView(model: devices)
+            case .activity:
                 SectionPlaceholder(section: navigation.section)
             }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbarRole(.editor)
         .sheet(isPresented: licenseSheetPresented) {
-            if let license = packages.licensePrompt ?? dashboard.licensePrompt {
+            if let license = devices.licensePrompt ?? packages.licensePrompt ?? dashboard.licensePrompt {
                 SDKLicenseSheet(license: license, accept: acceptLicense, decline: declineLicense)
             }
         }
         .alert(
-            packages.installError == nil ? dashboard.failureTitle : packages.failureTitle,
+            failureTitle,
             isPresented: updateErrorPresented
         ) {
-            Button("OK", role: .cancel) {
-                if packages.installError != nil {
-                    packages.dismissInstallError()
-                } else {
-                    dashboard.dismissUpdateError()
-                }
-            }
+            Button("OK", role: .cancel, action: dismissFailure)
         } message: {
-            Text(packages.installError ?? dashboard.updateError ?? "")
+            Text(devices.installError ?? packages.installError ?? dashboard.updateError ?? "")
         }
     }
 
+    private var failureTitle: String {
+        if devices.installError != nil { return devices.failureTitle }
+        if packages.installError != nil { return packages.failureTitle }
+        return dashboard.failureTitle
+    }
+
     private func acceptLicense() {
-        if packages.licensePrompt != nil {
+        if devices.licensePrompt != nil {
+            devices.acceptLicense()
+        } else if packages.licensePrompt != nil {
             packages.acceptLicense()
         } else {
             dashboard.acceptLicense()
@@ -60,20 +65,35 @@ struct RootView: View {
     }
 
     private func declineLicense() {
-        if packages.licensePrompt != nil {
+        if devices.licensePrompt != nil {
+            devices.declineLicense()
+        } else if packages.licensePrompt != nil {
             packages.declineLicense()
         } else {
             dashboard.declineLicense()
         }
     }
 
+    private func dismissFailure() {
+        if devices.installError != nil {
+            devices.dismissInstallError()
+        } else if packages.installError != nil {
+            packages.dismissInstallError()
+        } else {
+            dashboard.dismissUpdateError()
+        }
+    }
+
     private var licenseSheetPresented: Binding<Bool> {
         Binding(
-            get: { dashboard.licensePrompt != nil || packages.licensePrompt != nil },
+            get: {
+                dashboard.licensePrompt != nil || packages.licensePrompt != nil || devices.licensePrompt != nil
+            },
             set: { isPresented in
                 if !isPresented {
                     dashboard.declineLicenseIfNeeded()
                     packages.declineLicenseIfNeeded()
+                    devices.declineLicenseIfNeeded()
                 }
             }
         )
@@ -81,15 +101,9 @@ struct RootView: View {
 
     private var updateErrorPresented: Binding<Bool> {
         Binding(
-            get: { dashboard.updateError != nil || packages.installError != nil },
+            get: { dashboard.updateError != nil || packages.installError != nil || devices.installError != nil },
             set: { isPresented in
-                if !isPresented {
-                    if packages.installError != nil {
-                        packages.dismissInstallError()
-                    } else {
-                        dashboard.dismissUpdateError()
-                    }
-                }
+                if !isPresented { dismissFailure() }
             }
         )
     }
