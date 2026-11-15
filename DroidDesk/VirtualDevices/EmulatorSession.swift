@@ -23,8 +23,21 @@ struct EmulatorSession: Sendable {
     }
 
     func stop(avdName: String, sdkRoot: URL) async {
+        let executable = sdkRoot.appending(path: AndroidSDKTool.adb.executableRelativePath)
         guard let serial = await serial(for: avdName, sdkRoot: sdkRoot) else { return }
-        _ = await adb(sdkRoot, arguments: ["-s", serial, "emu", "kill"])
+        let arguments = ["-s", serial, "emu", "kill"]
+        let id = await ActivityLog.shared.begin(
+            title: "Stop \(avdName)",
+            command: ActivityCommand.line(executable: executable, arguments: arguments)
+        )
+        let result = await adb(sdkRoot, arguments: arguments)
+        await ActivityLog.shared.finish(
+            id,
+            exitCode: result?.exitCode,
+            standardOutput: result?.standardOutput ?? "",
+            standardError: result?.standardError ?? "The command could not start.",
+            outcome: result?.exitCode == 0 ? .succeeded : .failed
+        )
     }
 
     func run(
@@ -36,8 +49,13 @@ struct EmulatorSession: Sendable {
         let process = Process()
         process.executableURL = executable
         process.currentDirectoryURL = executable.deletingLastPathComponent()
-        process.arguments = EmulatorLaunchArguments.arguments(avdName: avdName, sdkRoot: sdkRoot)
+        let arguments = EmulatorLaunchArguments.arguments(avdName: avdName, sdkRoot: sdkRoot)
+        process.arguments = arguments
         process.environment = AndroidCommandEnvironment(sdkRoot: sdkRoot).values
+        let activityID = await ActivityLog.shared.begin(
+            title: "Start \(avdName)",
+            command: ActivityCommand.line(executable: executable, arguments: arguments)
+        )
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output
@@ -50,10 +68,17 @@ struct EmulatorSession: Sendable {
         do {
             try process.run()
         } catch {
+            await ActivityLog.shared.finish(
+                activityID,
+                exitCode: nil,
+                standardOutput: "",
+                standardError: "The emulator could not start.",
+                outcome: .failed
+            )
             return .failed("The emulator could not start.")
         }
 
-        return await withTaskCancellationHandler {
+        let outcome = await withTaskCancellationHandler {
             await watch(
                 avdName: avdName,
                 sdkRoot: sdkRoot,
@@ -66,6 +91,15 @@ struct EmulatorSession: Sendable {
         } onCancel: {
             if process.isRunning { process.terminate() }
         }
+        let succeeded = if case .ended = outcome { true } else { false }
+        await ActivityLog.shared.finish(
+            activityID,
+            exitCode: process.isRunning ? nil : process.terminationStatus,
+            standardOutput: outputDrain.text(),
+            standardError: errorDrain.text(),
+            outcome: succeeded ? .succeeded : .failed
+        )
+        return outcome
     }
 
     private func watch(

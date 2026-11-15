@@ -8,7 +8,11 @@ enum SDKRemover {
     }
 
     static func remove(_ root: URL) async -> Outcome {
-        await Task.detached(priority: .userInitiated) {
+        let id = await ActivityLog.shared.begin(
+            title: "Remove SDK",
+            command: SDKPathDisplay.tilde(root)
+        )
+        let outcome = await Task.detached(priority: .userInitiated) { () -> Outcome in
             do {
                 try perform(root)
                 return .removed
@@ -20,6 +24,25 @@ enum SDKRemover {
                 return .failed("The SDK folder could not be removed.")
             }
         }.value
+        switch outcome {
+        case .removed:
+            await ActivityLog.shared.finish(
+                id,
+                exitCode: 0,
+                standardOutput: "",
+                standardError: "",
+                outcome: .succeeded
+            )
+        case .failed(let message):
+            await ActivityLog.shared.finish(
+                id,
+                exitCode: 1,
+                standardOutput: "",
+                standardError: message,
+                outcome: .failed
+            )
+        }
+        return outcome
     }
 
     private static func perform(_ root: URL) throws {

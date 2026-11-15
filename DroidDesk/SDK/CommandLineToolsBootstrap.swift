@@ -29,6 +29,24 @@ struct CommandLineToolsBootstrap: Sendable {
     var runner = CommandRunner()
 
     func install(into sdkRoot: URL) async -> SDKInstallOutcome {
+        let id = await ActivityLog.shared.begin(
+            title: "Download command-line tools",
+            command: archive.url.absoluteString
+        )
+        let outcome = await place(into: sdkRoot)
+        let exit: Int32? = if case .updated = outcome { 0 } else { 1 }
+        let detail = if case .failed(let message) = outcome { message } else { "" }
+        await ActivityLog.shared.finish(
+            id,
+            exitCode: exit,
+            standardOutput: "",
+            standardError: detail,
+            outcome: ActivityOutcome(outcome)
+        )
+        return outcome
+    }
+
+    private func place(into sdkRoot: URL) async -> SDKInstallOutcome {
         let fileManager = FileManager.default
         let work = fileManager.temporaryDirectory.appending(path: "droiddesk-cmdline-tools-\(UUID().uuidString)", directoryHint: .isDirectory)
         do {

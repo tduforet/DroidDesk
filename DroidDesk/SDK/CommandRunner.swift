@@ -4,6 +4,7 @@ import Synchronization
 struct CommandResult: Sendable, Equatable {
     var exitCode: Int32
     var standardOutput: String
+    var standardError: String
 }
 
 /// Runs one executable directly, without a shell. A timeout counts as a failure.
@@ -28,9 +29,11 @@ struct CommandRunner: Sendable {
         process.arguments = arguments
         process.environment = environment
         let output = Pipe()
+        let errors = Pipe()
         process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
         let reader = OutputReader(output.fileHandleForReading)
+        let errorReader = OutputReader(errors.fileHandleForReading)
 
         let exitCode: Int32? = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -42,6 +45,7 @@ struct CommandRunner: Sendable {
                     try process.run()
                 } catch {
                     reader.finish()
+                    errorReader.finish()
                     gate.resume(nil)
                     return
                 }
@@ -59,8 +63,9 @@ struct CommandRunner: Sendable {
         }
 
         let standardOutput = await reader.text()
+        let standardError = await errorReader.text()
         guard let exitCode else { return nil }
-        return CommandResult(exitCode: exitCode, standardOutput: standardOutput)
+        return CommandResult(exitCode: exitCode, standardOutput: standardOutput, standardError: standardError)
     }
 }
 

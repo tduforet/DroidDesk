@@ -437,15 +437,32 @@ final class VirtualDevicesModel {
         Task {
             await self.stopForDeletion(name, sdkRoot: root)
             let executable = root.appending(path: AndroidSDKTool.avdmanager.executableRelativePath)
+            let arguments = ["delete", "avd", "-n", name]
+            let activityID = await ActivityLog.shared.begin(
+                title: "Delete \(name)",
+                command: ActivityCommand.line(executable: executable, arguments: arguments)
+            )
             let result = await self.runner.run(
                 executable: executable,
-                arguments: ["delete", "avd", "-n", name],
+                arguments: arguments,
                 environment: AndroidCommandEnvironment(sdkRoot: root).values,
                 timeout: .seconds(120)
             )
             self.phases[name] = nil
             await self.load()
-            if result?.exitCode != 0 || self.devices.contains(where: { $0.name == name }) {
+            let removed = result?.exitCode == 0 && !self.devices.contains(where: { $0.name == name })
+            var error = result?.standardError ?? "The command could not start."
+            if !removed, error.isEmpty {
+                error = "The device could not be deleted."
+            }
+            await ActivityLog.shared.finish(
+                activityID,
+                exitCode: result?.exitCode,
+                standardOutput: result?.standardOutput ?? "",
+                standardError: error,
+                outcome: removed ? .succeeded : .failed
+            )
+            if !removed {
                 self.failureTitle = "Delete failed"
                 self.installError = "The device could not be deleted."
             }

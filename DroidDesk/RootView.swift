@@ -49,7 +49,7 @@ struct RootView: View {
         case .virtualDevices:
             VirtualDevicesView(model: devices)
         case .activity:
-            SectionPlaceholder(section: navigation.section)
+            ActivityView()
         }
     }
 
@@ -114,21 +114,3 @@ struct RootView: View {
     }
 }
 
-private struct SectionPlaceholder: View {
-    let section: AppSection
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: section.symbol)
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text(section.summary)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(section.title)
-    }
-}

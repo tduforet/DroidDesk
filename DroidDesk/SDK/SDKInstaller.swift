@@ -23,6 +23,7 @@ struct SDKInstaller: Sendable {
         onLicense: @escaping @MainActor (SDKLicensePrompt) async -> Bool
     ) async -> SDKInstallOutcome {
         if let settled = promoteCommandLineTools(package, sdkRoot: sdkRoot, availableVersion: availableVersion) {
+            await recordLayout(package, outcome: settled)
             return settled
         }
         let outcome = await run(
@@ -110,6 +111,31 @@ struct SDKInstaller: Sendable {
         return VersionOrdering.isOlder(installed, than: available)
     }
 
+    private func recordLayout(_ package: AndroidSDKPackage, outcome: SDKInstallOutcome) async {
+        let id = await ActivityLog.shared.begin(
+            title: "Update \(package.installIdentifier)",
+            command: "Move cmdline-tools into latest"
+        )
+        let succeeded = if case .updated = outcome { true } else { false }
+        let detail = if case .failed(let message) = outcome {
+            message
+        } else {
+            "Moved the newest command-line tools into place."
+        }
+        await ActivityLog.shared.finish(
+            id,
+            exitCode: succeeded ? 0 : 1,
+            standardOutput: succeeded ? detail : "",
+            standardError: succeeded ? "" : detail,
+            outcome: ActivityOutcome(outcome)
+        )
+    }
+
+    private func activityTitle(flag: String, packageIDs: [String]) -> String {
+        let verb = flag == "--uninstall" ? "Uninstall" : "Install"
+        return "\(verb) \(packageIDs.joined(separator: ", "))"
+    }
+
     private func run(
         packageIDs: [String],
         flag: String,
@@ -123,8 +149,25 @@ struct SDKInstaller: Sendable {
         let process = Process()
         let executable = sdkRoot.appending(path: AndroidSDKTool.sdkmanager.executableRelativePath)
         process.executableURL = executable
-        process.arguments = ["--sdk_root=\(sdkRoot.path)", flag] + packageIDs
+        let arguments = ["--sdk_root=\(sdkRoot.path)", flag] + packageIDs
+        process.arguments = arguments
         process.environment = environment
+        let activityID = await ActivityLog.shared.begin(
+            title: activityTitle(flag: flag, packageIDs: packageIDs),
+            command: ActivityCommand.line(executable: executable, arguments: arguments)
+        )
+        var output = ""
+
+        func recorded(_ outcome: SDKInstallOutcome, code: Int32?) async -> SDKInstallOutcome {
+            await ActivityLog.shared.finish(
+                activityID,
+                exitCode: code,
+                standardOutput: output,
+                standardError: "",
+                outcome: ActivityOutcome(outcome)
+            )
+            return outcome
+        }
 
         let pipe = Pipe()
         let input = Pipe()
@@ -147,7 +190,7 @@ struct SDKInstaller: Sendable {
         } catch {
             reader.finish()
             stdin.close()
-            return .failed(launchFailure)
+            return await recorded(.failed(launchFailure), code: nil)
         }
 
         let watchdog = Task {
@@ -162,7 +205,6 @@ struct SDKInstaller: Sendable {
             stdin.close()
         }
 
-        var output = ""
         var seen = 0
         var handled = 0
         var declined = false
@@ -180,8 +222,8 @@ struct SDKInstaller: Sendable {
                     if !acceptComesFirst {
                         guard stdin.write(declined ? "n\n" : "y\n") else {
                             if process.isRunning { process.terminate() }
-                            _ = await exit.value()
-                            return .failed(promptFailure)
+                            let code = await exit.value()
+                            return await recorded(.failed(promptFailure), code: code)
                         }
                         handled = output.distance(from: output.startIndex, to: continuePrompt.upperBound)
                         continue
@@ -191,8 +233,8 @@ struct SDKInstaller: Sendable {
                 let accepted = await onLicense(pending.prompt)
                 guard stdin.write(accepted ? "y\n" : "n\n") else {
                     if process.isRunning { process.terminate() }
-                    _ = await exit.value()
-                    return .failed(promptFailure)
+                    let code = await exit.value()
+                    return await recorded(.failed(promptFailure), code: code)
                 }
                 if !accepted { declined = true }
                 handled = pending.handledCharacters
@@ -200,12 +242,12 @@ struct SDKInstaller: Sendable {
         }
 
         let code = await exit.value()
-        if declined { return .declined }
+        if declined { return await recorded(.declined, code: code) }
         if timedOut.withLock({ $0 }) {
-            return .failed(timeoutFailure)
+            return await recorded(.failed(timeoutFailure), code: code)
         }
-        if code == 0 { return .updated }
-        return .failed(SDKInstallReport.failureMessage(in: output))
+        if code == 0 { return await recorded(.updated, code: code) }
+        return await recorded(.failed(SDKInstallReport.failureMessage(in: output)), code: code)
     }
 }
 
