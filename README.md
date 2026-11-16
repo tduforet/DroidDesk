@@ -52,7 +52,7 @@ Each step is read back from disk, so an interrupted setup picks up where it stop
 There is no signed release yet, so for now DroidDesk is built from source:
 
 ```sh
-git clone <this repository>
+git clone https://github.com/tduforet/DroidDesk.git
 cd DroidDesk
 xcodebuild -project DroidDesk.xcodeproj -scheme DroidDesk -configuration Release \
   -derivedDataPath .derivedData build
