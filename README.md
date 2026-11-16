@@ -51,7 +51,7 @@ Each step is read back from disk, so an interrupted setup picks up where it stop
 
 Download `DroidDesk-<version>.dmg` from the [latest release](https://github.com/tduforet/DroidDesk/releases/latest), open it, and drag DroidDesk to Applications.
 
-DroidDesk is not notarized yet, so macOS blocks the first launch. It shows a warning that offers *Move to Trash*: close it without choosing that. Then open *System Settings → Privacy & Security*, scroll down to the message about DroidDesk, click *Open Anyway*, and confirm. You only need to do this once.
+DroidDesk is signed with a Developer ID and notarized by Apple. macOS may ask you to confirm once that you want to open an app downloaded from the Internet.
 
 Or build it from source:
 
@@ -102,7 +102,7 @@ xcodebuild test -project DroidDesk.xcodeproj -scheme DroidDesk -destination 'pla
 
 The code is SwiftUI with Swift Concurrency, and all subprocesses run through one command runner without a shell. The tests use stored output from the real Android tools (`DroidDeskTests/Fixtures`) and a scratch folder in place of your home, so they never touch your SDK or your devices.
 
-`Scripts/make-dmg.sh` builds a Release app and packs it into `dist/DroidDesk-<version>.dmg`, with a SHA-256 file next to it. The app is ad-hoc signed and not notarized, so macOS blocks the first launch of a downloaded copy until you allow it in *System Settings → Privacy & Security → Open Anyway*.
+`Scripts/make-dmg.sh` builds a Release app and packs it into `dist/DroidDesk-<version>.dmg`, with a SHA-256 file next to it. By default the app is ad-hoc signed and not notarized. To sign it with your own Developer ID certificate and notarize it, copy `.release.env.example` to `.release.env` (Git ignores it), fill in your certificate, team ID, and `notarytool` keychain profile, and run the script again.
 
 `Scripts/make-icon.swift` redraws the app icon.
 
