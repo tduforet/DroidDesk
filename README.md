@@ -100,7 +100,7 @@ The code is SwiftUI with Swift Concurrency, and all subprocesses run through one
 
 `Scripts/make-dmg.sh` builds a Release app and packs it into `dist/DroidDesk-<version>.dmg`, with a SHA-256 file next to it. The app is ad-hoc signed and not notarized, so on the first launch macOS asks you to confirm it in *System Settings → Privacy & Security → Open Anyway*.
 
-`Scripts/make-icon.swift` redraws the app icon. The original product brief is in [`DroidDesk-project-brief.md`](DroidDesk-project-brief.md).
+`Scripts/make-icon.swift` redraws the app icon.
 
 ## License
 
