@@ -7,3 +7,6 @@ dist/
 xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
+
+# Local release settings: certificate and notarization profile
+.release.env
