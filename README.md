@@ -49,7 +49,11 @@ Each step is read back from disk, so an interrupted setup picks up where it stop
 
 ## Install
 
-There is no signed release yet, so for now DroidDesk is built from source:
+Download `DroidDesk-<version>.dmg` from the [latest release](https://github.com/tduforet/DroidDesk/releases/latest), open it, and drag DroidDesk to Applications.
+
+DroidDesk is not notarized yet, so macOS blocks the first launch. It shows a warning that offers *Move to Trash*: close it without choosing that. Then open *System Settings → Privacy & Security*, scroll down to the message about DroidDesk, click *Open Anyway*, and confirm. You only need to do this once.
+
+Or build it from source:
 
 ```sh
 git clone https://github.com/tduforet/DroidDesk.git
@@ -98,7 +102,7 @@ xcodebuild test -project DroidDesk.xcodeproj -scheme DroidDesk -destination 'pla
 
 The code is SwiftUI with Swift Concurrency, and all subprocesses run through one command runner without a shell. The tests use stored output from the real Android tools (`DroidDeskTests/Fixtures`) and a scratch folder in place of your home, so they never touch your SDK or your devices.
 
-`Scripts/make-dmg.sh` builds a Release app and packs it into `dist/DroidDesk-<version>.dmg`, with a SHA-256 file next to it. The app is ad-hoc signed and not notarized, so on the first launch macOS asks you to confirm it in *System Settings → Privacy & Security → Open Anyway*.
+`Scripts/make-dmg.sh` builds a Release app and packs it into `dist/DroidDesk-<version>.dmg`, with a SHA-256 file next to it. The app is ad-hoc signed and not notarized, so macOS blocks the first launch of a downloaded copy until you allow it in *System Settings → Privacy & Security → Open Anyway*.
 
 `Scripts/make-icon.swift` redraws the app icon.
 
