@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DroidDesk — Android emulators on your Mac, without Android Studio</title>
+  <meta name="description" content="DroidDesk is a small Mac app that installs the official Android SDK and runs Android virtual devices. No Android Studio needed.">
+  <link rel="icon" href="images/icon.png">
+  <meta property="og:title" content="DroidDesk">
+  <meta property="og:description" content="Install the Android SDK and run Android emulators from one small Mac app.">
+  <meta property="og:image" content="images/icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="#top"><img src="images/icon.png" alt="" width="32" height="32">DroidDesk</a>
+      <nav aria-label="Links"><a href="https://github.com/OWNER/DroidDesk">GitHub</a></nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap">
+      <div class="hero">
+        <h1>Android emulators on your Mac, without Android Studio.</h1>
+        <p class="lead">DroidDesk installs the official Android SDK and runs virtual devices from one small app.</p>
+        <a class="button" href="https://github.com/OWNER/DroidDesk/releases/latest">Download for Mac</a>
+        <p class="requirements">Free and open source · Made for Apple Silicon · macOS 26 or later</p>
+
+        <div class="showcase" id="showcase">
+          <img src="images/screenshots/virtual-devices.png" width="980" height="640"
+               alt="The Virtual Devices screen of DroidDesk, with a virtual Pixel running"
+               onerror="document.getElementById('showcase').hidden = true">
+        </div>
+      </div>
+
+      <section aria-labelledby="features">
+        <h2 id="features" hidden>What it does</h2>
+        <div class="features">
+          <div>
+            <h3>Set up in minutes</h3>
+            <p>A guided setup installs the SDK, a system image, and a virtual device. You read and accept the Android licenses yourself.</p>
+          </div>
+          <div>
+            <h3>The official tools</h3>
+            <p>DroidDesk runs Google’s own <code>sdkmanager</code>, <code>avdmanager</code>, <code>emulator</code>, and <code>adb</code>. The SDK it leaves is a standard one that Expo, React Native, Flutter, and Gradle already understand.</p>
+          </div>
+          <div>
+            <h3>Control your devices</h3>
+            <p>Start, stop, cold boot, wipe, or delete a virtual device. A device shows Ready only once Android has finished booting.</p>
+          </div>
+          <div>
+            <h3>See every command</h3>
+            <p>Every install and emulator command is listed with its output, and one click copies a diagnostic report.</p>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="install">
+        <h2 id="install">Install</h2>
+        <ol class="steps">
+          <li>Download the DMG from the <a href="https://github.com/OWNER/DroidDesk/releases/latest">latest release</a>.</li>
+          <li>Open it and drag DroidDesk to Applications.</li>
+          <li>Open DroidDesk. macOS says it cannot verify the developer, because DroidDesk is not notarized yet. Open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>.</li>
+        </ol>
+        <p class="note">You need about 5 GB of free space for the SDK and one system image, and an internet connection for the first setup.</p>
+      </section>
+
+      <section id="screens-section" aria-labelledby="screens">
+        <h2 id="screens">Screens</h2>
+        <div class="gallery" id="gallery">
+          <figure><img src="images/screenshots/setup.png" width="980" height="640" alt="The guided setup, listing each step as it completes" onerror="this.closest('figure').hidden = true"><figcaption>Guided setup</figcaption></figure>
+          <figure><img src="images/screenshots/dashboard.png" width="980" height="640" alt="The Dashboard, showing sdkmanager, avdmanager, adb, and emulator as ready" onerror="this.closest('figure').hidden = true"><figcaption>Dashboard</figcaption></figure>
+          <figure><img src="images/screenshots/sdk-packages.png" width="980" height="640" alt="SDK Packages, listing Android platforms and build-tools" onerror="this.closest('figure').hidden = true"><figcaption>SDK Packages</figcaption></figure>
+          <figure><img src="images/screenshots/activity.png" width="980" height="640" alt="Activity, listing every command with its output" onerror="this.closest('figure').hidden = true"><figcaption>Activity</figcaption></figure>
+          <figure><img src="images/screenshots/settings.png" width="980" height="640" alt="Settings, with the SDK and virtual device folders" onerror="this.closest('figure').hidden = true"><figcaption>Settings</figcaption></figure>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p><a href="https://github.com/OWNER/DroidDesk">Source on GitHub</a> · Licensed under the <a href="https://github.com/OWNER/DroidDesk/blob/main/LICENSE">GNU GPL 3.0</a></p>
+      <p>DroidDesk is an independent project, not affiliated with or endorsed by Google. Android is a trademark of Google LLC.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Hide the gallery heading when none of the screenshots exist yet.
+    window.addEventListener('load', function () {
+      var shown = document.querySelectorAll('#gallery figure:not([hidden])').length;
+      if (shown === 0) document.getElementById('screens-section').hidden = true;
+    });
+  </script>
+</body>
+</html>
