@@ -99,3 +99,11 @@ xcodebuild test -project DroidDesk.xcodeproj -scheme DroidDesk -destination 'pla
 The code is SwiftUI with Swift Concurrency, and all subprocesses run through one command runner without a shell. The tests use stored output from the real Android tools (`DroidDeskTests/Fixtures`) and a scratch folder in place of your home, so they never touch your SDK or your devices.
 
 `Scripts/make-icon.swift` redraws the app icon. The original product brief is in [`DroidDesk-project-brief.md`](DroidDesk-project-brief.md).
+
+## License
+
+DroidDesk is free software, released under the [GNU General Public License, version 3](LICENSE). You can use, study, change, and share it. If you distribute a modified version, you must do so under the same license and make its source available.
+
+Copyright © 2026 Thomas Duforet.
+
+DroidDesk does not include the Android SDK. It downloads Google's tools, which come with their own license that you accept during setup.
