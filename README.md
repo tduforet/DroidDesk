@@ -98,4 +98,6 @@ xcodebuild test -project DroidDesk.xcodeproj -scheme DroidDesk -destination 'pla
 
 The code is SwiftUI with Swift Concurrency, and all subprocesses run through one command runner without a shell. The tests use stored output from the real Android tools (`DroidDeskTests/Fixtures`) and a scratch folder in place of your home, so they never touch your SDK or your devices.
 
+`Scripts/make-dmg.sh` builds a Release app and packs it into `dist/DroidDesk-<version>.dmg`, with a SHA-256 file next to it. The app is ad-hoc signed and not notarized, so on the first launch macOS asks you to confirm it in *System Settings → Privacy & Security → Open Anyway*.
+
 `Scripts/make-icon.swift` redraws the app icon. The original product brief is in [`DroidDesk-project-brief.md`](DroidDesk-project-brief.md).
